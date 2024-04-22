@@ -15,6 +15,11 @@ module TemporalTables
         return unless TemporalTables.updated_by_proc && respond_to?(:updated_by)
 
         self.updated_by = TemporalTables.updated_by_proc.call(self)
+
+        # since this is only used for temporal tables, ignore any changes to it
+        # it will be saved to database and to the history table but will not
+        # trigger any change to the record
+        clear_updated_by_change
       end
     end
   end
