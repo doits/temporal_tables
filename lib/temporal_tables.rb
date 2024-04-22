@@ -32,8 +32,6 @@ module TemporalTables
           TemporalTables::ConnectionAdapters.const_get(module_name)
         )
       end
-
-      ActiveRecord::Base.include TemporalTables::Whodunnit
     end
   end
 
