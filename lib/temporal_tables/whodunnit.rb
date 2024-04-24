@@ -17,8 +17,8 @@ module TemporalTables
                       previous_changes.present? && # only if something was saved to DB
                       history&.table_exists?
 
-        history.klass.where(id:, eff_to: TemporalTables::END_OF_TIME)
-          .update_all(updated_by: TemporalTables.updated_by_proc.call(self))
+        history.klass.where(id: id, eff_to: TemporalTables::END_OF_TIME)
+               .update_all(updated_by: TemporalTables.updated_by_proc.call(self)) # rubocop:disable Rails/SkipsModelValidations
       end
     end
   end
