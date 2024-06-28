@@ -10,7 +10,7 @@ module TemporalTables
       end
 
       def create_temporal_triggers(table_name, primary_key) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
-        column_names = columns(table_name).map(&:name)
+        column_names = columns(table_name).reject(&:virtual?).map(&:name)
 
         execute "drop trigger if exists #{table_name}_ai"
         execute %{

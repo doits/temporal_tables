@@ -156,6 +156,13 @@ describe Person do
       end
     end
 
+    describe 'when working with STI and using superclass history' do
+      it 'allows to fetch history entry of subclass history' do
+        Broom.create person: emily, model: 'Cackler 2000'
+        expect(FlyingMachine.history.last.class.name).to eql('BroomHistory')
+      end
+    end
+
     describe 'when working with STI one level deep' do
       let!(:broom) { Broom.create person: emily, model: 'Cackler 2000' }
 
@@ -200,7 +207,7 @@ describe Person do
     end
   end
 
-  if TemporalTables::DatabaseAdapter.adapter_name != 'mysql'
+  if adapter_name != 'mysql'
     describe 'when changing a creature with an array column' do
       let!(:cat) { Cat.create name: 'Mr. Mittens', nicknames: %w[Blacky Kitty] }
 

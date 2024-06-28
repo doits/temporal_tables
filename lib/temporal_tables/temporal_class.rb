@@ -31,6 +31,8 @@ module TemporalTables
 
             @visited_associations << association.name
 
+            next unless association.klass.include?(TemporalTables::HistoryHook)
+
             # Calling .history here will ensure that the history class
             # for this association is created and initialized
             clazz = association.klass.history
@@ -59,6 +61,9 @@ module TemporalTables
         type_name += 'History' unless type_name =~ /History\Z/
 
         begin
+          # Calling .history makes sure history class is created
+          type_name.sub(/History$/, '').constantize.history
+
           super
         rescue ActiveRecord::SubclassNotFound
           superclass.send(:find_sti_class, type_name)
