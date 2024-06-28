@@ -15,7 +15,7 @@ module TemporalTables
       end
 
       def create_temporal_triggers(table_name, primary_key) # rubocop:disable Metrics/MethodLength
-        column_names = columns(table_name).map(&:name)
+        column_names = columns(table_name).reject(&:virtual?).map(&:name)
 
         execute %{
           create or replace function #{table_name}_ai() returns trigger as $#{table_name}_ai$
