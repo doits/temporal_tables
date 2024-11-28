@@ -31,6 +31,8 @@ module TemporalTables
 
             @visited_associations << association.name
 
+            next unless association.klass.include?(TemporalTables::HistoryHook)
+
             # Calling .history here will ensure that the history class
             # for this association is created and initialized
             clazz = association.klass.history

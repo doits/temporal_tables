@@ -49,5 +49,3 @@ module TemporalTables
     end
   end
 end
-
-ActiveRecord::Base.include TemporalTables::HistoryHook

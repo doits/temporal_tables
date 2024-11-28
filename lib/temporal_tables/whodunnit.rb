@@ -6,15 +6,19 @@ module TemporalTables
       base.class_eval do
         include InstanceMethods
 
-        before_validation :set_updated_by
+        after_commit :amend_updated_by_for_history
       end
     end
 
     module InstanceMethods
-      def set_updated_by
-        return unless TemporalTables.updated_by_proc && respond_to?(:updated_by)
+      def amend_updated_by_for_history
+        return unless TemporalTables.updated_by_proc &&
+                      respond_to?(:updated_by) &&
+                      previous_changes.present? && # only if something was saved to DB
+                      history&.table_exists?
 
-        self.updated_by = TemporalTables.updated_by_proc.call(self)
+        history.klass.where(id: id, eff_to: TemporalTables::END_OF_TIME)
+               .update_all(updated_by: TemporalTables.updated_by_proc.call(self)) # rubocop:disable Rails/SkipsModelValidations
       end
     end
   end
