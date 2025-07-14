@@ -78,9 +78,9 @@ module TemporalTables
     end
 
     def drop_table(table_name, **options)
-      super(table_name, **options)
+      remove_temporal_table(table_name)
 
-      super(temporal_name(table_name), **options) if table_exists?(temporal_name(table_name))
+      super(table_name, **options)
     end
 
     def rename_table(name, new_name)
