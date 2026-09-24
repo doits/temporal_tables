@@ -14,11 +14,15 @@ module TemporalTables
       def amend_updated_by_for_history
         return unless TemporalTables.updated_by_proc &&
                       respond_to?(:updated_by) &&
-                      previous_changes.present? && # only if something was saved to DB
-                      history&.table_exists?
+                      previous_changes.present? # only if something was saved to DB
+
+        # the trigger has already copied the row's own updated_by into the history
+        whodunnit = TemporalTables.updated_by_proc.call(self)
+        return if whodunnit == updated_by
+        return unless history&.table_exists?
 
         history.klass.where(id: id, eff_to: TemporalTables::END_OF_TIME)
-               .update_all(updated_by: TemporalTables.updated_by_proc.call(self)) # rubocop:disable Rails/SkipsModelValidations
+               .update_all(updated_by: whodunnit) # rubocop:disable Rails/SkipsModelValidations
       end
     end
   end
