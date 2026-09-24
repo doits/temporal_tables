@@ -5,10 +5,10 @@ module TemporalTables
   # made to associations.
   module AssociationExtensions
     def target_scope
-      # Kludge: Check +public_methods+ instead of using +responds_to?+ to
-      # bypass +delegate_missing_to+ calls, as in +ActiveStorage::Attachment+.
-      # Using responds_to? results in an infinite loop stack overflow.
-      if @owner.public_methods.include?(:at_value)
+      # Asks the class: +respond_to?+ loops forever through +delegate_missing_to+
+      # (as in +ActiveStorage::Attachment+), and +public_methods+ builds an array
+      # of every method the owner has on each association load.
+      if @owner.class.public_method_defined?(:at_value)
         # If this is a history record but no at time was given,
         # assume the record's effective to date minus 1 microsecond
         # The logic here is to provide the association's history record at the end of
