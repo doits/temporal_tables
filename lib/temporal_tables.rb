@@ -35,6 +35,17 @@ module TemporalTables
         end
       end
     end
+
+    # A history class is a constant of its own, which a code reload would not
+    # unload. One in a namespace goes with the namespace.
+    initializer 'temporal_tables.unload_history_classes' do
+      next unless Rails.autoloaders.zeitwerk_enabled?
+
+      Rails.autoloaders.main.on_unload do |cpath, _value, _abspath|
+        history = "#{cpath}History"
+        Object.send(:remove_const, history) if !cpath.include?('::') && Object.const_defined?(history, false)
+      end
+    end
   end
 
   @create_by_default = false
