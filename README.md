@@ -153,6 +153,8 @@ Add an `updated_by` column to all temporal tables to track who made any changes,
 TemporalTables.add_updated_by_field(:integer) { User.current_user&.id }
 ```
 
+The value is filled in by `TemporalTables::Whodunnit`, which has to be included in the models (or `ApplicationRecord`). It writes the block's result onto the row itself with every INSERT and UPDATE, `touch` included, so each history version carries whoever wrote it, `nil` where the block returns `nil`. A save that changes nothing writes nothing. `updated_by` therefore shows up in `saved_changes`. On PostgreSQL an UPDATE that does not set `updated_by` itself — `update_columns`, `update_all`, counter caches, raw SQL — stores `nil` instead of the previous writer: two `<table>_bu_mark` / `<table>_bu_reset` triggers clear it. Tables that exist already get them once `create_temporal_triggers` runs for them again. On MySQL such an UPDATE keeps the previous value.
+
 ## Development
 
 To add a new version of rails to the specs, create corresponding Gemfiles in the `gemfiles/` directory, and add references to them in `.travis.yml`.

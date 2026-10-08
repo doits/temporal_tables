@@ -1,29 +1,32 @@
 # frozen_string_literal: true
 
 module TemporalTables
+  # Writes updated_by onto the row itself with every INSERT and UPDATE, so the
+  # trigger copies it into each history version.
   module Whodunnit
-    def self.included(base)
-      base.class_eval do
-        include InstanceMethods
+    private
 
-        after_commit :amend_updated_by_for_history
-      end
+    def _create_record(*)
+      _write_attribute('updated_by', TemporalTables.updated_by_proc.call(self)) if record_updated_by?
+
+      super
     end
 
-    module InstanceMethods
-      def amend_updated_by_for_history
-        return unless TemporalTables.updated_by_proc &&
-                      respond_to?(:updated_by) &&
-                      previous_changes.present? # only if something was saved to DB
+    # Reached only once all callbacks have run and a row is actually written,
+    # touches included.
+    def _update_row(attribute_names, attempted_action = 'update')
+      return super unless record_updated_by?
 
-        # the trigger has already copied the row's own updated_by into the history
-        whodunnit = TemporalTables.updated_by_proc.call(self)
-        return if whodunnit == updated_by
-        return unless history&.table_exists?
+      _write_attribute('updated_by', TemporalTables.updated_by_proc.call(self))
+      # as optimistic locking does with its column, so dirty tracking takes it
+      # for written rather than left pending
+      @_touch_attr_names << 'updated_by' if attempted_action == 'touch'
 
-        history.klass.where(id: id, eff_to: TemporalTables::END_OF_TIME)
-               .update_all(updated_by: whodunnit) # rubocop:disable Rails/SkipsModelValidations
-      end
+      super(attribute_names | ['updated_by'], attempted_action)
+    end
+
+    def record_updated_by?
+      TemporalTables.updated_by_proc && has_attribute?(:updated_by) && history.klass.table_exists?
     end
   end
 end
