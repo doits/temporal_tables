@@ -153,6 +153,8 @@ Add an `updated_by` column to all temporal tables to track who made any changes,
 TemporalTables.add_updated_by_field(:integer) { User.current_user&.id }
 ```
 
+The value is filled in by `TemporalTables::Whodunnit`, which has to be included in the models (or `ApplicationRecord`). It writes the block's result onto the row itself with every INSERT and UPDATE, `touch` included, so each history version carries whoever wrote it, `nil` where the block returns `nil`. A save that changes nothing writes nothing. `updated_by` therefore shows up in `saved_changes`. Writes that skip the model — `update_columns`, `update_all`, `increment!`, counter caches, raw SQL — keep the previous value.
+
 ## Development
 
 To add a new version of rails to the specs, create corresponding Gemfiles in the `gemfiles/` directory, and add references to them in `.travis.yml`.
