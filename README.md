@@ -34,6 +34,8 @@ end
 
 This will create a history table called "people_h" which will maintain a history of all changes to any records in people with the use of triggers on any create/update/delete operation.
 
+On PostgreSQL an update that changes nothing but `updated_at` and `updated_by`, such as a `touch`, writes no new version. Versions are stamped in UTC whatever time zone the database session runs in.
+
 Any subsequent schema changes to people will be reflected automatically in people_h.
 
 ``` ruby
@@ -153,7 +155,7 @@ Add an `updated_by` column to all temporal tables to track who made any changes,
 TemporalTables.add_updated_by_field(:integer) { User.current_user&.id }
 ```
 
-The value is filled in by `TemporalTables::Whodunnit`, which has to be included in the models (or `ApplicationRecord`). On every model with an `updated_by` column it writes the block's result onto the row itself with every INSERT and UPDATE, `touch` included, so each history version carries whoever wrote it, `nil` where the block returns `nil`. A save that changes nothing writes nothing. `updated_by` therefore shows up in `saved_changes`. On PostgreSQL an UPDATE that does not set `updated_by` itself — `update_columns`, `update_all`, counter caches, raw SQL — stores `nil` instead of the previous writer: two `<table>_bu_mark` / `<table>_bu_reset` triggers clear it. Tables that exist already get them once `create_temporal_triggers` runs for them again. On MySQL such an UPDATE keeps the previous value.
+The value is filled in by `TemporalTables::Whodunnit`, which has to be included in the models (or `ApplicationRecord`). On every model with an `updated_by` column it writes the block's result onto the row itself with every INSERT and UPDATE, `touch` included, so each history version carries whoever wrote it, `nil` where the block returns `nil`. A save that changes nothing writes nothing. `updated_by` therefore shows up in `saved_changes`. On PostgreSQL an UPDATE that does not set `updated_by` itself — `update_columns`, `update_all`, counter caches, raw SQL — stores `nil` instead of the previous writer: two `<table>_bu_mark` / `<table>_bu_reset` triggers clear it. Tables that exist already get them once `create_temporal_triggers` runs for them again. On MySQL such an UPDATE keeps the previous value. As a `touch` writes no version on PostgreSQL, the row may name a later writer than its current version does.
 
 ## Development
 

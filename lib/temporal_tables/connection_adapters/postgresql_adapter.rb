@@ -43,6 +43,10 @@ module TemporalTables
             declare
               cur_time timestamp without time zone;
             begin
+              if to_jsonb(new) - '{updated_at,updated_by}'::text[] = to_jsonb(old) - '{updated_at,updated_by}'::text[] then
+                return null;
+              end if;
+
               cur_time := now() at time zone 'utc';
 
               update #{temporal_name(table_name)} set eff_to = cur_time

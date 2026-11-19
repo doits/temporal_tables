@@ -22,4 +22,30 @@ describe TemporalTables::ConnectionAdapters::PostgreSQLAdapter do
       expect([first.eff_from, first.eff_to, last.eff_from, last.eff_to]).to all(be_within(1.minute).of(Time.current))
     end
   end
+
+  describe 'an update' do
+    let!(:familiar) { Familiar.create!(name: 'Greebo') }
+
+    def versions
+      connection.select_rows('select name, updated_by from familiars_h order by eff_from, eff_to')
+    end
+
+    it 'writes no version when it changes only updated_at and updated_by' do
+      Current.user = 'Nanny Ogg'
+
+      expect do
+        familiar.touch
+        familiar.update_columns(updated_at: 1.day.from_now)
+        connection.execute "update familiars set name = name, updated_by = 'Esme'"
+      end.not_to(change { versions })
+    end
+
+    it 'writes a version when it changes anything else' do
+      familiar.touch
+      Current.user = 'Nanny Ogg'
+      familiar.update!(name: 'Greebo the Second')
+
+      expect(versions).to eq([['Greebo', nil], ['Greebo the Second', 'Nanny Ogg']])
+    end
+  end
 end
