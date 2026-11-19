@@ -80,15 +80,15 @@ module TemporalTables
       super(table_name, **options)
     end
 
-    def rename_table(name, new_name)
+    def rename_table(name, new_name, **options)
       drop_temporal_triggers name if table_exists?(temporal_name(name))
 
-      super name, new_name
+      super(name, new_name, **options)
 
       return unless table_exists?(temporal_name(name))
 
-      super(temporal_name(name), temporal_name(new_name))
-      create_temporal_triggers new_name, original_primary_key(table_name)
+      super(temporal_name(name), temporal_name(new_name), **options)
+      create_temporal_triggers new_name, original_primary_key(new_name)
     end
 
     def add_column(table_name, column_name, type, **options)

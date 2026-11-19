@@ -3,60 +3,55 @@
 require 'spec_helper'
 
 describe TemporalTables::TemporalAdapter do
+  let(:connection) { ActiveRecord::Base.connection }
+  let(:postgres) { TemporalTables::DatabaseHelper.adapter_name == 'postgresql' }
+
+  # Schema changes outlive the example, so each one works on tables of its own.
+  before do
+    connection.create_table(:spells, temporal: true, force: true) { |t| t.string :name }
+  end
+
+  after do
+    connection.drop_table :spells, if_exists: true
+    connection.drop_table :incantations, if_exists: true
+  end
+
+  def history_objects_exist?(table)
+    objects = [
+      TemporalTables::DatabaseHelper.table_exists?("#{table}_h"),
+      *%w[ai au ad].map { |trigger| TemporalTables::DatabaseHelper.trigger_exists?("#{table}_#{trigger}") }
+    ]
+    objects += %w[ai au ad].map { |f| TemporalTables::DatabaseHelper.function_exists?("#{table}_#{f}()") } if postgres
+    raise "#{table} has only some of its history objects: #{objects.inspect}" unless objects.uniq.size == 1
+
+    objects.first
+  end
+
   describe '#drop_table' do
-    it 'correctly removes history table, functions and triggers, too' do
-      skip 'mysql has no functions' if TemporalTables::DatabaseHelper.adapter_name == 'mysql'
-
-      expect do
-        ActiveRecord::Schema.define { drop_table :people }
-      end.to change { TemporalTables::DatabaseHelper.table_exists?('people_h') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.function_exists?('people_ai()') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.function_exists?('people_au()') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.function_exists?('people_ad()') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_ai') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_au') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_ad') }.from(true).to(false)
-    end
-
-    it 'correctly removes history table and triggers' do
-      skip 'other adapters than mysql have functions, too' if TemporalTables::DatabaseHelper.adapter_name != 'mysql'
-
-      expect do
-        ActiveRecord::Schema.define { drop_table :people }
-      end.to change { TemporalTables::DatabaseHelper.table_exists?('people_h') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_ai') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_au') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_ad') }.from(true).to(false)
+    it 'removes the history table, its triggers and functions, too' do
+      expect { connection.drop_table :spells }.to change { history_objects_exist?(:spells) }.from(true).to(false)
     end
   end
 
-  # FIXME: After the tests above the triggers stay removed so the following
-  #        fails. Looks like database is not reset correctly between specs.
-
   describe '#remove_temporal_table' do
-    it 'correctly removes history table, functions and triggers' do
-      skip 'mysql has no functions' if TemporalTables::DatabaseHelper.adapter_name == 'mysql'
-
-      expect do
-        ActiveRecord::Schema.define { remove_temporal_table :people }
-      end.to change { TemporalTables::DatabaseHelper.table_exists?('people_h') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.function_exists?('people_ai()') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.function_exists?('people_au()') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.function_exists?('people_ad()') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_ai') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_au') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_ad') }.from(true).to(false)
+    it 'removes the history table, its triggers and functions' do
+      expect { connection.remove_temporal_table :spells }
+        .to change { history_objects_exist?(:spells) }.from(true).to(false)
+      expect(connection.table_exists?(:spells)).to be(true)
     end
+  end
 
-    it 'correctly removes history table and triggers' do
-      skip 'other adapters than mysql have functions, too' if TemporalTables::DatabaseHelper.adapter_name != 'mysql'
+  describe '#rename_table' do
+    it 'moves the history table and its triggers to the new name' do
+      connection.execute "insert into spells (name) values ('Alohomora')"
 
-      expect do
-        ActiveRecord::Schema.define { remove_temporal_table :people }
-      end.to change { TemporalTables::DatabaseHelper.table_exists?('people_h') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_ai') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_au') }.from(true).to(false)
-         .and change { TemporalTables::DatabaseHelper.trigger_exists?('people_ad') }.from(true).to(false)
+      expect { connection.rename_table :spells, :incantations }
+        .to change { history_objects_exist?(:spells) }.from(true).to(false)
+        .and change { history_objects_exist?(:incantations) }.from(false).to(true)
+
+      connection.execute "update incantations set name = 'Lumos'"
+      expect(connection.select_values('select name from incantations_h order by eff_from, name'))
+        .to eq(%w[Alohomora Lumos])
     end
   end
 end
