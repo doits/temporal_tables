@@ -133,4 +133,62 @@ describe TemporalTables::TemporalAdapter do
       expect([power.precision, power.scale]).to eq([4, 2])
     end
   end
+
+  describe 'a generated column' do
+    def double_powers(table)
+      connection.select_values("select double_power from #{table}_h order by eff_from, eff_to").map(&:to_i)
+    end
+
+    def history_column_generated?(table)
+      connection.columns("#{table}_h").find { |c| c.name == 'double_power' }.virtual?
+    end
+
+    [true, false].each do |stored|
+      context "when #{stored ? 'stored' : 'virtual'}" do
+        # Rails takes columns differing in nothing but being stored for one and
+        # hands back the first, so the two kinds differ in their expression too.
+        let(:expression) { stored ? 'power * 2' : '2 * power' }
+
+        before do
+          next if stored || !postgres
+          next if connection.database_version >= 180_000 && ActiveRecord.version >= Gem::Version.new('8.1')
+
+          skip 'virtual generated columns need PostgreSQL 18 and Rails 8.1'
+        end
+
+        it 'keeps its values in a plain history column, created with the table' do
+          connection.create_table(:incantations, temporal: true) do |t|
+            t.integer :power
+            t.virtual :double_power, type: :integer, as: expression, stored: stored
+          end
+          connection.execute 'insert into incantations (power) values (2)'
+          connection.execute 'update incantations set power = 3'
+
+          expect(double_powers(:incantations)).to eq([4, 6])
+          expect(history_column_generated?(:incantations)).to be(false)
+        end
+
+        it 'keeps its values in a plain history column, added later' do
+          connection.add_column :spells, :power, :integer
+          connection.add_column :spells, :double_power, :virtual, type: :integer, as: expression, stored: stored
+          connection.execute "insert into spells (name, power) values ('Lumos', 2)"
+          connection.execute 'update spells set power = 3'
+
+          expect(double_powers(:spells)).to eq([4, 6])
+          expect(history_column_generated?(:spells)).to be(false)
+        end
+      end
+    end
+
+    it 'leaves out a history column that an earlier add_column made generated, too' do
+      connection.add_column :spells, :power, :integer
+      connection.add_column :spells_h, :double_power, :virtual, type: :integer, as: 'power * 2', stored: true
+      generated = postgres ? 'generated always as (power * 2) stored' : 'as (power * 2) stored'
+      connection.execute "alter table spells add column double_power integer #{generated}"
+      connection.create_temporal_triggers :spells, 'id'
+      connection.execute "insert into spells (name, power) values ('Lumos', 2)"
+
+      expect(double_powers(:spells)).to eq([4])
+    end
+  end
 end

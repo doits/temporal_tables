@@ -36,7 +36,7 @@ This will create a history table called "people_h" which will maintain a history
 
 On PostgreSQL an update that changes nothing but `updated_at`, `updated_by` and `lock_version`, such as a `touch`, writes no new version (see `skip_touch_versions` below). Versions are stamped in UTC whatever time zone the database session runs in, so the gem requires `ActiveRecord.default_timezone = :utc` (the Rails default).
 
-Any subsequent schema changes to people will be reflected automatically in people_h.
+Any subsequent schema changes to people will be reflected automatically in people_h. A generated column (`t.virtual`) gets a plain column in people_h that keeps the value each version had. History columns that an earlier version of this gem created as generated ones stay so and are left out by the triggers.
 
 ``` ruby
 # Nothing extra required -- people_h will automatically get an "name" column too!

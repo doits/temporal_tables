@@ -10,7 +10,10 @@ module TemporalTables
       end
 
       def create_temporal_triggers(table_name, primary_key) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
-        column_names = columns(table_name).reject { |col| col.try(:virtual?) }.map(&:name).sort
+        # A generated column's history copy is a plain one taking its value; one
+        # that add_column once made generated in the history table, too, is left out.
+        generated_in_history = columns(temporal_name(table_name)).select { |c| c.try(:virtual?) }.map(&:name)
+        column_names = columns(table_name).map(&:name).sort - generated_in_history
         table = quote_table_name(table_name)
         history = quote_table_name(temporal_name(table_name))
         key = quote_column_name(primary_key)

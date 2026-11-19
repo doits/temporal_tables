@@ -111,7 +111,9 @@ module TemporalTables
 
       return unless table_exists?(temporal_name(table_name))
 
-      super temporal_name(table_name), column_name, type, **options.except(:null, :default)
+      # the history copy of a generated column is a plain one
+      history_type = type == :virtual ? options.fetch(:type) : type
+      super temporal_name(table_name), column_name, history_type, **options.except(:null, :default, :type, :as, :stored)
       create_temporal_triggers table_name, original_primary_key(table_name)
     end
 

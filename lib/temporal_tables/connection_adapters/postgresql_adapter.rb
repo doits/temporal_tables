@@ -16,12 +16,23 @@ module TemporalTables
       TOUCH_COLUMNS = %w[updated_at updated_by lock_version].freeze
 
       def create_temporal_triggers(table_name, primary_key) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
-        live_columns = columns(table_name)
-        column_names = live_columns.reject { |col| col.try(:virtual?) }.map(&:name).sort
         table = quote_table_name(table_name)
         history = quote_table_name(temporal_name(table_name))
         key = quote_column_name(primary_key)
-        new_values = column_names.map { |c| "new.#{quote_column_name(c)}" }.join(', ')
+        # A generated column's history copy is a plain one taking its value; one
+        # that add_column once made generated in the history table, too, is left out.
+        generated_in_history = columns(temporal_name(table_name)).select { |c| c.try(:virtual?) }.map(&:name)
+        generated_columns = columns(table_name).select { |c| c.try(:virtual?) }.map(&:name)
+        live_columns = columns(table_name).reject { |c| generated_in_history.include?(c.name) }.sort_by(&:name)
+        column_names = live_columns.map(&:name)
+        new_values = live_columns.map do |c|
+          # new carries no value of a virtual (not stored) column, the row in the table does
+          if c.try(:virtual?) && !c.try(:virtual_stored?)
+            "(select #{quote_column_name(c.name)} from #{table} where #{key} = new.#{key})"
+          else
+            "new.#{quote_column_name(c.name)}"
+          end
+        end.join(', ')
         touch_columns = column_names & TOUCH_COLUMNS
         # *= compares binary images: it needs no equality operator (json, point
         # and xml have none) and tells 1.0 from 1.00. Whole rows, unlike single
@@ -35,7 +46,6 @@ module TemporalTables
           end if;
         SQL
 
-        generated_columns = live_columns.map(&:name) - column_names
         coalesce = coalesce_versions_sql(table_name, column_names, generated_columns, key, new_values)
 
         execute %{
