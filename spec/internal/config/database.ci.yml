@@ -8,5 +8,4 @@ mysql:
 postgresql:
   adapter: postgresql
   database: temporal_tables_test
-  user: postgres
   password:
