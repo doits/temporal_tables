@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-describe TemporalTables::ConnectionAdapters::PostgreSQLAdapter do # rubocop:disable RSpec/SpecFilePathFormat
+describe 'PostgreSQL triggers' do # rubocop:disable RSpec/DescribeClass
   let(:connection) { ActiveRecord::Base.connection }
 
   before do
