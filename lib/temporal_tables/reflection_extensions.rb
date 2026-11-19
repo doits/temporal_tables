@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module TemporalTables
-  # This is required for eager_load to work in 6.1
+  # This is required for eager_load to work
   module AbstractReflectionExtensions
     def join_scope(table, foreign_table, foreign_klass)
       constraint = super
@@ -14,5 +14,4 @@ module TemporalTables
   end
 end
 
-prepend_reflection = ActiveRecord.version > ::Gem::Version.new('6.1.0')
-ActiveRecord::Reflection::AbstractReflection.prepend TemporalTables::AbstractReflectionExtensions if prepend_reflection
+ActiveRecord::Reflection::AbstractReflection.prepend TemporalTables::AbstractReflectionExtensions
