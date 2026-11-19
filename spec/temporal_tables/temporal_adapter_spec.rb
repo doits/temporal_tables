@@ -79,6 +79,30 @@ describe TemporalTables::TemporalAdapter do
     end
   end
 
+  describe 'a table, key and column named by reserved words' do
+    after do
+      connection.drop_table :references, if_exists: true
+      connection.drop_table :grant, if_exists: true
+    end
+
+    it 'keeps its history through a rename and goes with it' do
+      connection.create_table(:references, primary_key: :check, temporal: true) { |t| t.integer :order }
+      connection.add_index :references, :order
+      order = connection.quote_column_name(:order)
+      connection.execute "insert into #{connection.quote_table_name(:references)} (#{order}) values (1)"
+      connection.rename_table :references, :grant
+      connection.execute "update #{connection.quote_table_name(:grant)} set #{order} = 2"
+      connection.execute "delete from #{connection.quote_table_name(:grant)}"
+
+      closed_versions = connection.select_values(<<~SQL)
+        select #{order} from #{connection.quote_table_name(:grant_h)}
+        where eff_to < '#{TemporalTables::END_OF_TIME}' order by #{order}
+      SQL
+      expect(closed_versions.map(&:to_i)).to eq([1, 2])
+      expect { connection.drop_table :grant }.to change { history_objects_exist?(:grant) }.to(false)
+    end
+  end
+
   describe 'a column of the history table' do
     def history_column(name)
       connection.columns(:spells_h).find { |c| c.name == name.to_s }
