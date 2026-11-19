@@ -53,7 +53,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ruby: ["3.0", "3.1", "3.2", "3.3", "3.4"]
+        ruby: ["3.0", "3.1", "3.2", "3.3", "3.4", "4.0"]
         gemfile:
           - "gemfiles/Gemfile.7.1.mysql"
           - "gemfiles/Gemfile.7.1.pg"
@@ -84,6 +84,14 @@ jobs:
             gemfile: "gemfiles/Gemfile.8.1.mysql"
           - ruby: "3.1"
             gemfile: "gemfiles/Gemfile.8.1.pg"
+          - ruby: "4.0"
+            gemfile: "gemfiles/Gemfile.7.1.mysql"
+          - ruby: "4.0"
+            gemfile: "gemfiles/Gemfile.7.1.pg"
+          - ruby: "4.0"
+            gemfile: "gemfiles/Gemfile.7.2.mysql"
+          - ruby: "4.0"
+            gemfile: "gemfiles/Gemfile.7.2.pg"
 
     env:
       BUNDLE_GEMFILE: ${{github.workspace}}/${{matrix.gemfile }}
@@ -92,8 +100,9 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "${{ matrix.ruby }}"
+      # newest releases within each Gemfile's constraints, not the lockfile's
       - name: Bundle
-        run: bundle install
+        run: bundle update
 
       - name: Run Tests
         env:
