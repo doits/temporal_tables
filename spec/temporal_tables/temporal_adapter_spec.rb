@@ -53,6 +53,30 @@ describe TemporalTables::TemporalAdapter do
       expect(connection.select_values('select name from incantations_h order by eff_from, name'))
         .to eq(%w[Alohomora Lumos])
     end
+
+    it 'moves the history copies of its indexes along' do
+      connection.add_index :spells, :name
+      connection.rename_table :spells, :incantations
+
+      expect(connection.indexes(:incantations_h).map(&:name)).to include('index_incantations_on_name_h')
+
+      connection.remove_index :incantations, :name
+      expect(connection.indexes(:incantations_h).map(&:name)).not_to include('index_incantations_on_name_h')
+    end
+  end
+
+  describe '#create_table' do
+    it 'keys the history table by history_id, whatever key and default the table has' do
+      skip 'PostgreSQL only' unless postgres
+
+      connection.create_table(:incantations, id: :uuid, default: -> { 'gen_random_uuid()' }, temporal: true) do |t|
+        t.string :name
+      end
+      connection.execute "insert into incantations (name) values ('Lumos')"
+
+      expect(connection.primary_key(:incantations_h)).to eq('history_id')
+      expect(connection.select_values('select name from incantations_h')).to eq(['Lumos'])
+    end
   end
 
   describe 'a column of the history table' do

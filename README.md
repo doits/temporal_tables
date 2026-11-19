@@ -34,7 +34,7 @@ end
 
 This will create a history table called "people_h" which will maintain a history of all changes to any records in people with the use of triggers on any create/update/delete operation.
 
-On PostgreSQL an update that changes nothing but `updated_at` and `updated_by`, such as a `touch`, writes no new version (see `skip_touch_versions` below). Versions are stamped in UTC whatever time zone the database session runs in.
+On PostgreSQL an update that changes nothing but `updated_at`, `updated_by` and `lock_version`, such as a `touch`, writes no new version (see `skip_touch_versions` below). Versions are stamped in UTC whatever time zone the database session runs in, so the gem requires `ActiveRecord.default_timezone = :utc` (the Rails default).
 
 Any subsequent schema changes to people will be reflected automatically in people_h.
 
@@ -46,6 +46,22 @@ add_column :people, :name, :string
 To track the history of a pre-existing table, just call `add_temporal_table`:
 ``` ruby
 add_temporal_table :people
+```
+
+Every write to people also writes people_h, so a migration that locks or rewrites people_h blocks writes to people for as long.
+
+### Upgrading existing history tables
+
+History tables created by older versions of the gem lack the `history_id` primary key, may carry `NOT NULL` and defaults on their columns, and run older triggers. Per table, ideally one transaction each:
+``` ruby
+add_column :people_h, :history_id, :primary_key # rewrites people_h
+connection.columns(:people_h).each do |column|
+  next if %w[history_id eff_from eff_to].include?(column.name)
+
+  change_column_null :people_h, column.name, true
+  change_column_default :people_h, column.name, nil
+end
+create_temporal_triggers :people, 'id' # the live table's primary key
 ```
 
 ### Querying
@@ -88,7 +104,7 @@ Person         #=> Person(id: :integer, name: :string)
 Person.history #=> PersonHistory(history_id: :integer, id: :integer, name: :string, eff_from: :datetime, eff_to: :datetime)
 ```
 
-The history table's primary key is `history_id`, but a history record stands for the original one: `id`, `find`, `ids` and a history relation used as a subquery (`Person.where(id: Person.history.at(time).where(...))`) go by the original id. A single version is `where(history_id: ...)`; `reload`, `update` and `destroy` on a history record reach every version of it. History tables created before history_id existed lack the column; add it with `add_column :people_h, :history_id, :primary_key`.
+The history table's primary key is `history_id`, but a history record stands for the original one: `id`, `find`, `ids` and a history relation used as a subquery (`Person.where(id: Person.history.at(time).where(...))`) go by the original id. A single version is `where(history_id: ...)`; `reload` returns any one version of the record, `update` and `destroy` hit all of them, and batches over all versions go by `history_id` (`find_each(cursor: :history_id)`).
 
 You can easily get a history of all changes to a record.
 ``` ruby
@@ -152,7 +168,7 @@ Don't create temporal tables for these tables.  (default = %w{schema_migrations 
 TemporalTables.skip_temporal_table_for :table_one, :table_two
 ```
 
-Write no version for an update that changes nothing but `updated_at` and `updated_by`, such as a `touch` (PostgreSQL only, default = true). The triggers read it when they are created, so existing tables follow a change once `create_temporal_triggers` runs for them again. To version every touch:
+Write no version for an update that changes nothing but `updated_at`, `updated_by` and `lock_version`, such as a `touch` (PostgreSQL only, default = true). The triggers read it when they are created, so existing tables follow a change once `create_temporal_triggers` runs for them again (see Upgrading above). To version every touch:
 ``` ruby
 TemporalTables.skip_touch_versions = false
 ```
@@ -162,7 +178,7 @@ Add an `updated_by` column to all temporal tables to track who made any changes,
 TemporalTables.add_updated_by_field(:integer) { User.current_user&.id }
 ```
 
-The value is filled in by `TemporalTables::Whodunnit`, which has to be included in the models (or `ApplicationRecord`). On every model with an `updated_by` column it writes the block's result onto the row itself with every INSERT and UPDATE, `touch` included, so each history version carries whoever wrote it, `nil` where the block returns `nil`. A save that changes nothing writes nothing. `updated_by` therefore shows up in `saved_changes`. On PostgreSQL an UPDATE that does not set `updated_by` itself — `update_columns`, `update_all`, counter caches, raw SQL — stores `nil` instead of the previous writer: two `<table>_bu_mark` / `<table>_bu_reset` triggers clear it. Tables that exist already get them once `create_temporal_triggers` runs for them again. On MySQL such an UPDATE keeps the previous value. As a `touch` writes no version on PostgreSQL, the row may name a later writer than its current version does.
+The value is filled in by `TemporalTables::Whodunnit`, which has to be included in the models (or `ApplicationRecord`). On every model with an `updated_by` column and a history table it writes the block's result onto the row itself with every INSERT and UPDATE, `touch` included, so each history version carries whoever wrote it, `nil` where the block returns `nil`. A save that changes nothing writes nothing. `updated_by` therefore shows up in `saved_changes`. On PostgreSQL an UPDATE that does not set `updated_by` itself — `update_columns`, `update_all`, counter caches, raw SQL — stores `nil` instead of the previous writer: two `<table>_bu_mark` / `<table>_bu_reset` triggers clear it. Tables that exist already get them once `create_temporal_triggers` runs for them again (see Upgrading above). On MySQL such an UPDATE keeps the previous value. As a `touch` writes no version on PostgreSQL, the row may name a later writer than its current version does.
 
 ## Development
 

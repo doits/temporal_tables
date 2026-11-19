@@ -38,7 +38,7 @@ describe 'PostgreSQL triggers' do # rubocop:disable RSpec/DescribeClass
       connection.execute "update familiars set name = name, updated_by = 'Esme'"
     end
 
-    it 'writes no version when it changes only updated_at and updated_by' do
+    it 'writes no version when it changes only updated_at, updated_by and lock_version' do
       expect { touch_only_updates }.not_to(change { versions })
     end
 

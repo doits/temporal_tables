@@ -24,7 +24,9 @@ module TemporalTables
     def add_temporal_table(table_name, **options) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
       create_table(
         temporal_name(table_name),
-        **options.merge(id: :bigint, primary_key: 'history_id', temporal_bypass: true)
+        # The live table's key options (id type, default, limit) must not reach history_id.
+        **options.slice(:options, :comment, :charset, :collation, :force, :if_not_exists)
+                 .merge(id: :bigint, primary_key: 'history_id', temporal_bypass: true)
       ) do |t|
         t.datetime :eff_from, null: false, limit: 6
         t.datetime :eff_to,   null: false, limit: 6, default: TemporalTables::END_OF_TIME
@@ -88,7 +90,19 @@ module TemporalTables
       return unless table_exists?(temporal_name(name))
 
       super(temporal_name(name), temporal_name(new_name), **options)
+      rename_temporal_indexes name, new_name
       create_temporal_triggers new_name, original_primary_key(new_name)
+    end
+
+    # The history copies are named after the live indexes, which Rails renames
+    # with the table, so rename_table's own index renaming misses them.
+    def rename_temporal_indexes(name, new_name)
+      indexes(new_name).each do |index|
+        old_index_name = temporal_index_name(index_name(name, index.columns))
+        next unless index_name_exists?(temporal_name(new_name), old_index_name)
+
+        rename_index temporal_name(new_name), old_index_name, temporal_index_name(index.name)
+      end
     end
 
     def add_column(table_name, column_name, type, **options)
@@ -180,7 +194,7 @@ module TemporalTables
       "#{table_name}_h"
     end
 
-    def create_temporal_triggers(_table_name)
+    def create_temporal_triggers(_table_name, _primary_key)
       raise NotImplementedError, 'create_temporal_triggers is not implemented'
     end
 

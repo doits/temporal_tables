@@ -28,7 +28,13 @@ ActiveRecord::Schema.define do
 
   create_table :familiars, temporal: true, force: true do |t|
     t.string :name
+    t.integer :lock_version, null: false, default: 0
     t.timestamps
+  end
+
+  create_table :spellbooks, force: true do |t|
+    t.string :title
+    t.string :updated_by
   end
 
   create_table :warts, temporal: true, force: true do |t|

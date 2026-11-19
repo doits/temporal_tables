@@ -25,10 +25,13 @@ module TemporalTables
       super(attribute_names | ['updated_by'], attempted_action)
     end
 
-    # add_temporal_table adds the column, so it marks a temporal table without
-    # building the history class and every class its associations reach.
+    # Asks the schema cache rather than the history class, which would build
+    # every history class its associations reach.
     def record_updated_by?
-      TemporalTables.updated_by_proc && has_attribute?(:updated_by)
+      TemporalTables.updated_by_proc && has_attribute?(:updated_by) &&
+        self.class.connection_pool.with_connection do |connection|
+          connection.schema_cache.data_source_exists?("#{self.class.table_name}_h")
+        end
     end
   end
 end

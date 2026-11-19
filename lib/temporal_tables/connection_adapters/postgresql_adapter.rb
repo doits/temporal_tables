@@ -18,7 +18,8 @@ module TemporalTables
 
       def create_temporal_triggers(table_name, primary_key) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         column_names = columns(table_name).reject { |col| col.try(:virtual?) }.map(&:name).sort
-        touch_columns = "'{updated_at,updated_by}'::text[]"
+        # a touch bumps lock_version too, any other update changes something else
+        touch_columns = "'{updated_at,updated_by,lock_version}'::text[]"
         skip_touch = <<~SQL if TemporalTables.skip_touch_versions
           if to_jsonb(new) - #{touch_columns} = to_jsonb(old) - #{touch_columns} then
             return null;

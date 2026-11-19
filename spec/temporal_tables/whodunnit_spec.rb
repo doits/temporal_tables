@@ -15,4 +15,11 @@ describe TemporalTables::Whodunnit do
       .to eq(%w[Agatha Magrat])
     expect(Object.const_defined?(:FamiliarHistory)).to be(false)
   end
+
+  it 'leaves updated_by alone on a table without history' do
+    spellbook = Spellbook.create!(title: 'The Octavo', updated_by: 'the Librarian')
+    spellbook.update!(title: 'The Necrotelicomnicon')
+
+    expect(spellbook.reload.updated_by).to eq('the Librarian')
+  end
 end
