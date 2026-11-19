@@ -30,6 +30,7 @@ module TemporalTables
       ) do |t|
         t.datetime :eff_from, null: false, limit: 6
         t.datetime :eff_to,   null: false, limit: 6, default: TemporalTables::END_OF_TIME
+        t.datetime :eff_edited_from, limit: 6
 
         columns(table_name).each do |c|
           column_options = { limit: c.limit, array: c.try(:array) }.compact

@@ -67,6 +67,174 @@ describe 'PostgreSQL triggers' do # rubocop:disable RSpec/DescribeClass
       end
     end
   end
+
+  describe 'an update of a coalesced column' do
+    let!(:familiar) { Familiar.create!(name: 'Greebo') }
+
+    around do |example|
+      TemporalTables.coalesce_versions_within = 5.minutes
+      TemporalTables.coalesce_columns = %w[name familiars.species]
+      connection.create_temporal_triggers :familiars, 'id'
+      connection.create_temporal_triggers :covens, 'id'
+      example.run
+    ensure
+      TemporalTables.coalesce_versions_within = nil
+      TemporalTables.coalesce_columns = []
+      TemporalTables.skip_touch_versions = true
+      connection.create_temporal_triggers :familiars, 'id'
+      connection.create_temporal_triggers :covens, 'id'
+    end
+
+    def versions(*columns)
+      connection.select_rows("select #{columns.join(', ')} from familiars_h order by eff_from, eff_to")
+    end
+
+    # as if every version so far had been written that much earlier
+    def age_versions(by)
+      connection.execute <<~SQL
+        update familiars_h set eff_from = eff_from - interval '#{by.to_i} seconds',
+          eff_to = case when eff_to = '#{TemporalTables::END_OF_TIME}' then eff_to
+                        else eff_to - interval '#{by.to_i} seconds' end
+      SQL
+    end
+
+    it 'overwrites the open version a change of the same column made, moving it to the last edit' do
+      familiar.update!(name: 'G')
+      first_edit = versions(:eff_from).last.first
+      familiar.update!(name: 'Gr')
+      familiar.update!(name: 'Greebo the Second')
+
+      expect(versions(:name)).to eq([['Greebo'], ['Greebo the Second']])
+      last_edit = versions(:eff_from).last.first
+      expect(versions(:eff_to).first.first).to eq(last_edit)
+      expect(last_edit).to be > first_edit
+      expect(versions(:eff_edited_from)).to eq([[nil], [first_edit]])
+    end
+
+    it 'keeps the version an insert made' do
+      familiar.update!(name: 'Greebo the Second')
+
+      expect(versions(:name)).to eq([['Greebo'], ['Greebo the Second']])
+    end
+
+    it 'keeps each step of other columns and the version before it' do
+      familiar.update!(name: 'Greebo the Second')
+      familiar.update!(status: 'published')
+      familiar.update!(name: 'Greebo the Third')
+      familiar.update!(name: 'Greebo the Fourth')
+      familiar.update!(status: 'cancelled')
+      familiar.update!(status: 'deleted')
+
+      expect(versions(:name, :status)).to eq(
+        [['Greebo', nil], ['Greebo the Second', nil], ['Greebo the Second', 'published'],
+         ['Greebo the Fourth', 'published'], ['Greebo the Fourth', 'cancelled'], ['Greebo the Fourth', 'deleted']]
+      )
+    end
+
+    it 'keeps the version of another coalesced column, and one of two changed together' do
+      familiar.update!(name: 'Greebo the Second')
+      familiar.update!(species: 'cat')
+      familiar.update!(species: 'tomcat')
+      familiar.update!(name: 'Greebo the Third', species: 'vampire cat')
+
+      expect(versions(:name, :species)).to eq(
+        [['Greebo', nil], ['Greebo the Second', nil], ['Greebo the Second', 'tomcat'],
+         ['Greebo the Third', 'vampire cat']]
+      )
+    end
+
+    it 'keeps the version of another writer' do
+      familiar.update!(name: 'Greebo the Second')
+      familiar.update!(name: 'Greebo the Third')
+      Current.user = 'Nanny Ogg'
+      familiar.update!(name: 'Greebo the Fourth')
+
+      expect(versions(:name, :updated_by)).to eq(
+        [['Greebo', nil], ['Greebo the Third', nil], ['Greebo the Fourth', 'Nanny Ogg']]
+      )
+    end
+
+    it 'keeps a version older than the window, whatever a touch did since' do
+      familiar.update!(name: 'Greebo the Second')
+      age_versions(6.minutes)
+      familiar.touch
+      familiar.update!(name: 'Greebo the Third')
+
+      expect(versions(:name)).to eq([['Greebo'], ['Greebo the Second'], ['Greebo the Third']])
+    end
+
+    it 'writes no version for a touch' do
+      familiar.update!(name: 'Greebo the Second')
+
+      expect { familiar.touch }.not_to(change { versions(:name, :updated_at) })
+    end
+
+    it 'keeps the version of a touch and writes one for it when touch versions are not skipped' do
+      TemporalTables.skip_touch_versions = false
+      connection.create_temporal_triggers :familiars, 'id'
+      familiar.update!(name: 'Greebo the Second')
+      familiar.touch
+      familiar.update!(name: 'Greebo the Third')
+
+      expect(versions(:name)).to eq([['Greebo'], ['Greebo the Second'], ['Greebo the Second'], ['Greebo the Third']])
+    end
+
+    it 'keeps the zero-length version of two updates in one transaction' do
+      ActiveRecord::Base.transaction do
+        familiar.update!(status: 'published')
+        familiar.update!(name: 'Greebo the Second')
+      end
+      familiar.update!(name: 'Greebo the Third')
+
+      expect(versions(:name, :status)).to eq(
+        [['Greebo', nil], ['Greebo', 'published'], ['Greebo the Second', 'published'],
+         ['Greebo the Third', 'published']]
+      )
+    end
+
+    it 'writes a version for each change without coalesce_versions_within' do
+      TemporalTables.coalesce_versions_within = nil
+      connection.create_temporal_triggers :familiars, 'id'
+      familiar.update!(name: 'Greebo the Second')
+      familiar.update!(name: 'Greebo the Third')
+
+      expect(versions(:name)).to eq([['Greebo'], ['Greebo the Second'], ['Greebo the Third']])
+    end
+
+    it 'coalesces in a table without updated_at' do
+      connection.execute "insert into covens (name) values ('Lancre')"
+      connection.execute "update covens set name = 'Lancre Castle'"
+      connection.execute "update covens set name = 'Lancre Town'"
+
+      expect(Coven.history.order(:eff_from).pluck(:name)).to eq(['Lancre', 'Lancre Town'])
+    end
+
+    it 'skips an entry the table lacks and takes no list at all' do
+      TemporalTables.coalesce_columns = %w[familiars.colour]
+      expect { connection.create_temporal_triggers :familiars, 'id' }.not_to raise_error
+      TemporalTables.coalesce_columns = nil
+      expect { connection.create_temporal_triggers :familiars, 'id' }.not_to raise_error
+    end
+
+    it 'refuses a window that is no duration' do
+      TemporalTables.coalesce_versions_within = '5 minutes'
+
+      expect { connection.create_temporal_triggers :familiars, 'id' }.to raise_error(ArgumentError)
+    end
+
+    it 'coalesces in a table, key and column named by reserved words' do
+      connection.create_table(:references, primary_key: :check, temporal: true) { |t| t.integer :order }
+      TemporalTables.coalesce_columns = %w[references.order]
+      connection.create_temporal_triggers :references, 'check'
+      connection.execute 'insert into "references" ("order") values (1)'
+      (2..4).each { |order| connection.execute %(update "references" set "order" = #{order}) }
+      connection.execute 'delete from "references"'
+
+      expect(connection.select_values('select "order" from references_h order by eff_from')).to eq([1, 4])
+    ensure
+      connection.drop_table :references, if_exists: true
+    end
+  end
   # rubocop:enable Rails/SkipsModelValidations
 
   describe 'an update of columns whose equality is missing or loose' do

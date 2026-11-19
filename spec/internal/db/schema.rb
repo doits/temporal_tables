@@ -28,6 +28,8 @@ ActiveRecord::Schema.define do
 
   create_table :familiars, temporal: true, force: true do |t|
     t.string :name
+    t.string :species
+    t.string :status
     t.integer :lock_version, null: false, default: 0
     t.timestamps
   end

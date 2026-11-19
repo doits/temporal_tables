@@ -66,6 +66,24 @@ module TemporalTables
     @skip_touch_versions = skip
   end
 
+  @coalesce_versions_within = nil
+  def self.coalesce_versions_within
+    @coalesce_versions_within
+  end
+
+  def self.coalesce_versions_within=(duration)
+    @coalesce_versions_within = duration
+  end
+
+  @coalesce_columns = []
+  def self.coalesce_columns
+    @coalesce_columns
+  end
+
+  def self.coalesce_columns=(columns)
+    @coalesce_columns = columns
+  end
+
   @skipped_temporal_tables = [:schema_migrations, :sessions, :ar_internal_metadata]
   def self.skip_temporal_table_for(*tables)
     @skipped_temporal_tables += tables

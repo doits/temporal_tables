@@ -52,11 +52,12 @@ Every write to people also writes people_h, so a migration that locks or rewrite
 
 ### Upgrading existing history tables
 
-History tables created by older versions of the gem lack the `history_id` primary key, may carry `NOT NULL` and defaults on their columns, and run older triggers. Per table, ideally one transaction each:
+History tables created by older versions of the gem lack the `history_id` primary key and `eff_edited_from`, may carry `NOT NULL` and defaults on their columns, and run older triggers. Per table, ideally one transaction each:
 ``` ruby
 add_column :people_h, :history_id, :primary_key # rewrites people_h
+add_column :people_h, :eff_edited_from, :datetime, limit: 6
 connection.columns(:people_h).each do |column|
-  next if %w[history_id eff_from eff_to].include?(column.name)
+  next if %w[history_id eff_from eff_to eff_edited_from].include?(column.name)
 
   change_column_null :people_h, column.name, true
   change_column_default :people_h, column.name, nil
@@ -171,6 +172,17 @@ TemporalTables.skip_temporal_table_for :table_one, :table_two
 Write no version for an update that changes nothing but `updated_at`, `updated_by` and `lock_version`, such as a `touch` (PostgreSQL only, default = true). The triggers read it when they are created, so existing tables follow a change once `create_temporal_triggers` runs for them again (see Upgrading above). To version every touch:
 ``` ruby
 TemporalTables.skip_touch_versions = false
+```
+
+Coalesce the versions of quick successive edits of one column, such as a text saved on every keystroke, into one version per editing phase (PostgreSQL only, default = off). An update that changes one listed column and nothing else but `updated_at`, `updated_by` and `lock_version` overwrites the open version instead of closing it, when all of these hold:
+- that version came from a change of the same column alone, so the version an insert wrote and every change of another column stay,
+- its `eff_from` lies within `coalesce_versions_within` of now, so the window slides with each edit,
+- it has the same `updated_by` as the update, where the table has that column.
+
+The overwritten version then starts at the update, and the one before it lasts until then: a phase is dated by its last edit, and the states in between are lost. Its `eff_edited_from` keeps when the phase began (null on a version that took no further edit); history tables created before this column existed get it as shown in Upgrading above. A bare column name applies to every table that has it, `table.column` to that one table; an entry a table lacks is skipped. Like `skip_touch_versions`, both settings take effect once `create_temporal_triggers` runs for a table again (see Upgrading above).
+``` ruby
+TemporalTables.coalesce_versions_within = 5.minutes
+TemporalTables.coalesce_columns = %w[translations tasks.title tasks.description]
 ```
 
 Add an `updated_by` column to all temporal tables to track who made any changes, which is quite useful for auditing.  Defaults to a :string field.  The block is called when records are saved to determine the value to place within the `updated_by` field.  `updated_by` fields are only auto-created if this is configured.
