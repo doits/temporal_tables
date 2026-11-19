@@ -26,6 +26,11 @@ ActiveRecord::Schema.define do
   end
   add_index :people, :name, unique: true
 
+  create_table :familiars, temporal: true, force: true do |t|
+    t.string :name
+    t.timestamps
+  end
+
   create_table :warts, temporal: true, force: true do |t|
     t.belongs_to :person
   end

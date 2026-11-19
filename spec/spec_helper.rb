@@ -30,6 +30,9 @@ database.connect
 Gemika::RSpec.configure_clean_database_before_example
 Rails.env = original_env
 
+require 'temporal_tables'
+TemporalTables.add_updated_by_field { Current.user }
+
 begin
   Combustion.initialize! :active_record
 rescue ActiveRecord::RecordNotUnique
@@ -39,5 +42,6 @@ end
 RSpec.configure do |config|
   config.before do
     DatabaseCleaner.clean
+    Current.reset
   end
 end
