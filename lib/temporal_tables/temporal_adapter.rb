@@ -31,6 +31,7 @@ module TemporalTables
         t.datetime :eff_from, null: false, limit: 6
         t.datetime :eff_to,   null: false, limit: 6, default: TemporalTables::END_OF_TIME
         t.datetime :eff_edited_from, limit: 6
+        t.string :eff_edited_column
 
         columns(table_name).each do |c|
           column_options = { limit: c.limit, precision: c.precision, scale: c.scale, array: c.try(:array) }.compact
@@ -141,7 +142,8 @@ module TemporalTables
       return unless table_exists?(temporal_name(table_name))
 
       super temporal_name(table_name), column_name, type, **options.except(:null, :default)
-      # Don't need to update triggers here...
+      # replaced functions drop the plans PostgreSQL cached with the old type
+      create_temporal_triggers table_name, original_primary_key(table_name)
     end
 
     def rename_column(table_name, column_name, new_column_name)

@@ -144,10 +144,10 @@ describe TemporalTables::TemporalAdapter do
     end
 
     [true, false].each do |stored|
+      # Rails hands back the stored column it read first for a virtual one with
+      # the same name and expression, so both kinds share them here.
       context "when #{stored ? 'stored' : 'virtual'}" do
-        # Rails takes columns differing in nothing but being stored for one and
-        # hands back the first, so the two kinds differ in their expression too.
-        let(:expression) { stored ? 'power * 2' : '2 * power' }
+        let(:expression) { 'power * 2' }
 
         before do
           next if stored || !postgres
@@ -187,8 +187,9 @@ describe TemporalTables::TemporalAdapter do
       connection.execute "alter table spells add column double_power integer #{generated}"
       connection.create_temporal_triggers :spells, 'id'
       connection.execute "insert into spells (name, power) values ('Lumos', 2)"
+      connection.execute 'update spells set power = 3'
 
-      expect(double_powers(:spells)).to eq([4])
+      expect(double_powers(:spells)).to eq([4, 6])
     end
   end
 end

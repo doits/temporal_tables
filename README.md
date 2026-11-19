@@ -36,7 +36,7 @@ This will create a history table called "people_h" which will maintain a history
 
 On PostgreSQL an update that changes nothing but `updated_at`, `updated_by` and `lock_version`, such as a `touch`, writes no new version (see `skip_touch_versions` below). Versions are stamped in UTC whatever time zone the database session runs in, so the gem requires `ActiveRecord.default_timezone = :utc` (the Rails default).
 
-Any subsequent schema changes to people will be reflected automatically in people_h. A generated column (`t.virtual`) gets a plain column in people_h that keeps the value each version had. History columns that an earlier version of this gem created as generated ones stay so and are left out by the triggers.
+Any subsequent schema changes to people will be reflected automatically in people_h. A generated column (`t.virtual`) gets a plain column in people_h that keeps the value each version had; on PostgreSQL the triggers read it back from the row.
 
 ``` ruby
 # Nothing extra required -- people_h will automatically get an "name" column too!
@@ -52,18 +52,21 @@ Every write to people also writes people_h, so a migration that locks or rewrite
 
 ### Upgrading existing history tables
 
-History tables created by older versions of the gem lack the `history_id` primary key and `eff_edited_from`, may carry `NOT NULL` and defaults on their columns, and run older triggers. Per table, ideally one transaction each:
+History tables created by older versions of the gem lack the `history_id` primary key and the columns `coalesce_columns` needs, may carry `NOT NULL` and defaults on their columns, and run older triggers, which leave generated columns null. Per table, ideally one transaction each:
 ``` ruby
-add_column :people_h, :history_id, :primary_key # rewrites people_h
-add_column :people_h, :eff_edited_from, :datetime, limit: 6
+add_column :people_h, :history_id, :primary_key, if_not_exists: true # rewrites people_h
+add_column :people_h, :eff_edited_from, :datetime, limit: 6, if_not_exists: true
+add_column :people_h, :eff_edited_column, :string, if_not_exists: true
 connection.columns(:people_h).each do |column|
-  next if %w[history_id eff_from eff_to eff_edited_from].include?(column.name)
+  next if %w[history_id eff_from eff_to eff_edited_from eff_edited_column].include?(column.name) || column.virtual?
 
   change_column_null :people_h, column.name, true
   change_column_default :people_h, column.name, nil
 end
 create_temporal_triggers :people, 'id' # the live table's primary key
 ```
+
+A history column that an older `add_column` created as a generated one, too, stays so and is left out by the triggers.
 
 ### Querying
 
@@ -174,16 +177,18 @@ Write no version for an update that changes nothing but `updated_at`, `updated_b
 TemporalTables.skip_touch_versions = false
 ```
 
-Coalesce the versions of quick successive edits of one column, such as a text saved on every keystroke, into one version per editing phase (PostgreSQL only, default = off). An update that changes one listed column and nothing else but `updated_at`, `updated_by` and `lock_version` overwrites the open version instead of closing it, when all of these hold:
-- that version came from a change of the same column alone, so the version an insert wrote and every change of another column stay,
-- its `eff_from` lies within `coalesce_versions_within` of now, so the window slides with each edit,
-- it has the same `updated_by` as the update, where the table has that column.
+Coalesce the versions of quick successive edits of one column, such as a text saved on every keystroke, into one version per editing phase (PostgreSQL only, default = off). An update that changes one listed column alone names it in its version's `eff_edited_column`; in a `jsonb` column it must change one leaf alone, named by its path such as `translations.de.title` (the walk descends where both values are objects, so arrays, scalars and missing values are leaves; a dot in a key reads `\.`). `updated_at`, `updated_by`, `lock_version` and generated columns do not count, so a cache derived from a column is best a generated one. Such an update overwrites the open version instead of closing it when that version
+- names the same column or path, so the version of an insert, of another column or path or of several at once stays,
+- began within `coalesce_versions_within` of now, so the window slides with each edit,
+- has the same `updated_by`, where the table has that column; a null one counts as one writer.
 
-The overwritten version then starts at the update, and the one before it lasts until then: a phase is dated by its last edit, and the states in between are lost. Its `eff_edited_from` keeps when the phase began (null on a version that took no further edit); history tables created before this column existed get it as shown in Upgrading above. A bare column name applies to every table that has it, `table.column` to that one table; an entry a table lacks is skipped. Like `skip_touch_versions`, both settings take effect once `create_temporal_triggers` runs for a table again (see Upgrading above).
+The overwritten version then starts at the update, and the one before it lasts until then: a phase is dated by its last edit, its `eff_edited_from` keeps when it began, and the states in between are lost. A closed version's `eff_to` may thus still move. History tables need both columns for it, see Upgrading above. A bare column name applies to every table that has it, `table.column` to that one table; an entry a table lacks is skipped. Like `skip_touch_versions`, the settings take effect once `create_temporal_triggers` runs for a table again.
 ``` ruby
 TemporalTables.coalesce_versions_within = 5.minutes
 TemporalTables.coalesce_columns = %w[translations tasks.title tasks.description]
 ```
+
+On PostgreSQL, an update of a row whose open version began in the same transaction goes into that version, which would otherwise last no time.
 
 Add an `updated_by` column to all temporal tables to track who made any changes, which is quite useful for auditing.  Defaults to a :string field.  The block is called when records are saved to determine the value to place within the `updated_by` field.  `updated_by` fields are only auto-created if this is configured.
 ``` ruby
