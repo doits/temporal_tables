@@ -5,5 +5,5 @@ class Hamster < ActiveRecord::Base
 
   include TemporalTables::HistoryHook
 
-  has_one :hamster_wheel, foreign_key: :hamster_uuid, inverse_of: :hamster
+  has_one :hamster_wheel, foreign_key: :hamster_uuid, inverse_of: :hamster, dependent: nil
 end

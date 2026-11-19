@@ -87,9 +87,7 @@ module TemporalTables
       end
     end
 
-    def orig_class
-      self.class.orig_class
-    end
+    delegate :orig_class, to: :class
 
     def orig_id
       attributes[orig_class.primary_key]

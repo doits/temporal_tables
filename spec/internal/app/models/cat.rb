@@ -2,5 +2,5 @@
 
 class Cat < ActiveRecord::Base
   include TemporalTables::HistoryHook
-  has_many :lives, class_name: 'CatLife'
+  has_many :lives, class_name: 'CatLife', dependent: nil
 end

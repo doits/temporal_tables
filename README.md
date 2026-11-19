@@ -186,9 +186,7 @@ To add a new version of rails to the specs, create corresponding Gemfiles in the
 
 To run specs, run `rake matrix:install` and `rake matrix:spec`, or a single Gemfile with `BUNDLE_GEMFILE=gemfiles/Gemfile.8.1.pg bundle exec rspec`. PostgreSQL connects as `PGUSER` or the current user.
 
-CI runs RuboCop with `gemfiles/Gemfile.7.1.pg`, whose rubocop-rspec is older than the newest Gemfiles': a cop renamed since (such as `RSpec/FilePath`) has to pass under both names, so prefer code that needs no disable comment.
-
-The CI test job runs `bundle update --conservative rails`, so it tests the newest Ruby and Rails patch releases each Gemfile allows; everything else stays at the lockfile's versions.
+Neither the Gemfiles' lockfiles nor a `.ruby-version` are committed: CI and local runs resolve the newest releases each Gemfile allows, and CI's matrix names Ruby minor versions, of which `ruby/setup-ruby` installs the newest patch release.
 
 ## Copyright
 See [LICENSE](https://github.com/bkroeker/temporal_tables/blob/master/LICENSE.txt) for more details.

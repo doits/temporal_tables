@@ -57,7 +57,7 @@ describe Person do
       end
 
       it 'should not belong to a coven or have warts' do
-        expect(orig_emily.coven).to eq(nil)
+        expect(orig_emily.coven).to be_nil
         expect(orig_emily.warts.count).to eq(0)
       end
     end
@@ -147,11 +147,11 @@ describe Person do
       end
 
       it 'should have correct class hierarchies' do
-        expect(emily.is_a?(Person)).to eq(true)
-        expect(emily.is_a?(PersonHistory)).to eq(false)
+        expect(emily.is_a?(Person)).to be(true)
+        expect(emily.is_a?(PersonHistory)).to be(false)
 
-        expect(historical_emily.is_a?(Person)).to eq(true)
-        expect(historical_emily.is_a?(PersonHistory)).to eq(true)
+        expect(historical_emily.is_a?(Person)).to be(true)
+        expect(historical_emily.is_a?(PersonHistory)).to be(true)
       end
     end
 

@@ -2,5 +2,5 @@
 
 class Bird < ActiveRecord::Base
   include TemporalTables::HistoryHook
-  has_one :nest, inverse_of: :bird
+  has_one :nest, inverse_of: :bird, dependent: nil
 end

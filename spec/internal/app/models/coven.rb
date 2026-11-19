@@ -2,5 +2,5 @@
 
 class Coven < ActiveRecord::Base
   include TemporalTables::HistoryHook
-  has_many :people
+  has_many :people, dependent: nil
 end
