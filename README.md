@@ -34,7 +34,7 @@ end
 
 This will create a history table called "people_h" which will maintain a history of all changes to any records in people with the use of triggers on any create/update/delete operation.
 
-On PostgreSQL an update that changes nothing but `updated_at` and `updated_by`, such as a `touch`, writes no new version. Versions are stamped in UTC whatever time zone the database session runs in.
+On PostgreSQL an update that changes nothing but `updated_at` and `updated_by`, such as a `touch`, writes no new version (see `skip_touch_versions` below). Versions are stamped in UTC whatever time zone the database session runs in.
 
 Any subsequent schema changes to people will be reflected automatically in people_h.
 
@@ -148,6 +148,11 @@ TemporalTables.create_by_default = true
 Don't create temporal tables for these tables.  (default = %w{schema_migrations sessions ar_internal_metadata})
 ``` ruby
 TemporalTables.skip_temporal_table_for :table_one, :table_two
+```
+
+Write no version for an update that changes nothing but `updated_at` and `updated_by`, such as a `touch` (PostgreSQL only, default = true). The triggers read it when they are created, so existing tables follow a change once `create_temporal_triggers` runs for them again. To version every touch:
+``` ruby
+TemporalTables.skip_touch_versions = false
 ```
 
 Add an `updated_by` column to all temporal tables to track who made any changes, which is quite useful for auditing.  Defaults to a :string field.  The block is called when records are saved to determine the value to place within the `updated_by` field.  `updated_by` fields are only auto-created if this is configured.

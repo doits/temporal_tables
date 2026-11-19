@@ -57,6 +57,15 @@ module TemporalTables
     @create_by_default = default
   end
 
+  @skip_touch_versions = true
+  def self.skip_touch_versions
+    @skip_touch_versions
+  end
+
+  def self.skip_touch_versions=(skip)
+    @skip_touch_versions = skip
+  end
+
   @skipped_temporal_tables = [:schema_migrations, :sessions, :ar_internal_metadata]
   def self.skip_temporal_table_for(*tables)
     @skipped_temporal_tables += tables

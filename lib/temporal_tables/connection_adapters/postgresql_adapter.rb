@@ -2,7 +2,7 @@
 
 module TemporalTables
   module ConnectionAdapters
-    module PostgreSQLAdapter
+    module PostgreSQLAdapter # rubocop:disable Metrics/ModuleLength
       def drop_temporal_triggers(table_name)
         execute "drop trigger #{table_name}_ai on #{table_name}"
         execute "drop trigger #{table_name}_au on #{table_name}"
@@ -16,8 +16,14 @@ module TemporalTables
         drop_updated_by_triggers table_name
       end
 
-      def create_temporal_triggers(table_name, primary_key) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
+      def create_temporal_triggers(table_name, primary_key) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         column_names = columns(table_name).reject { |col| col.try(:virtual?) }.map(&:name).sort
+        touch_columns = "'{updated_at,updated_by}'::text[]"
+        skip_touch = <<~SQL if TemporalTables.skip_touch_versions
+          if to_jsonb(new) - #{touch_columns} = to_jsonb(old) - #{touch_columns} then
+            return null;
+          end if;
+        SQL
 
         execute %{
           create or replace function #{table_name}_ai() returns trigger as $#{table_name}_ai$
@@ -43,10 +49,7 @@ module TemporalTables
             declare
               cur_time timestamp without time zone;
             begin
-              if to_jsonb(new) - '{updated_at,updated_by}'::text[] = to_jsonb(old) - '{updated_at,updated_by}'::text[] then
-                return null;
-              end if;
-
+              #{skip_touch}
               cur_time := now() at time zone 'utc';
 
               update #{temporal_name(table_name)} set eff_to = cur_time

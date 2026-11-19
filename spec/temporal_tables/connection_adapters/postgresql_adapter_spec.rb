@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-describe TemporalTables::ConnectionAdapters::PostgreSQLAdapter do
+describe TemporalTables::ConnectionAdapters::PostgreSQLAdapter do # rubocop:disable RSpec/SpecFilePathFormat
   let(:connection) { ActiveRecord::Base.connection }
 
   before do
@@ -23,6 +23,7 @@ describe TemporalTables::ConnectionAdapters::PostgreSQLAdapter do
     end
   end
 
+  # rubocop:disable Rails/SkipsModelValidations
   describe 'an update' do
     let!(:familiar) { Familiar.create!(name: 'Greebo') }
 
@@ -30,14 +31,15 @@ describe TemporalTables::ConnectionAdapters::PostgreSQLAdapter do
       connection.select_rows('select name, updated_by from familiars_h order by eff_from, eff_to')
     end
 
-    it 'writes no version when it changes only updated_at and updated_by' do
+    def touch_only_updates
       Current.user = 'Nanny Ogg'
+      familiar.touch
+      familiar.update_columns(updated_at: 1.day.from_now)
+      connection.execute "update familiars set name = name, updated_by = 'Esme'"
+    end
 
-      expect do
-        familiar.touch
-        familiar.update_columns(updated_at: 1.day.from_now)
-        connection.execute "update familiars set name = name, updated_by = 'Esme'"
-      end.not_to(change { versions })
+    it 'writes no version when it changes only updated_at and updated_by' do
+      expect { touch_only_updates }.not_to(change { versions })
     end
 
     it 'writes a version when it changes anything else' do
@@ -47,5 +49,23 @@ describe TemporalTables::ConnectionAdapters::PostgreSQLAdapter do
 
       expect(versions).to eq([['Greebo', nil], ['Greebo the Second', 'Nanny Ogg']])
     end
+
+    context 'when touch versions are not skipped' do
+      around do |example|
+        TemporalTables.skip_touch_versions = false
+        connection.create_temporal_triggers :familiars, 'id'
+        example.run
+      ensure
+        TemporalTables.skip_touch_versions = true
+        connection.create_temporal_triggers :familiars, 'id'
+      end
+
+      it 'writes a version for each' do
+        count = versions.size
+        touch_only_updates
+        expect(versions.size).to eq(count + 3)
+      end
+    end
   end
+  # rubocop:enable Rails/SkipsModelValidations
 end
