@@ -188,7 +188,7 @@ To run specs, run `rake matrix:install` and `rake matrix:spec`, or a single Gemf
 
 CI runs RuboCop with `gemfiles/Gemfile.7.1.pg`, whose rubocop-rspec is older than the newest Gemfiles': a cop renamed since (such as `RSpec/FilePath`) has to pass under both names, so prefer code that needs no disable comment.
 
-The CI test job runs `bundle update`, so it tests the newest Ruby and gem releases each Gemfile allows; the lockfiles only pin local runs and RuboCop.
+The CI test job runs `bundle update --conservative rails`, so it tests the newest Ruby and Rails patch releases each Gemfile allows; everything else stays at the lockfile's versions.
 
 ## Copyright
 See [LICENSE](https://github.com/bkroeker/temporal_tables/blob/master/LICENSE.txt) for more details.

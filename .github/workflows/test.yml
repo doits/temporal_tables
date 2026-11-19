@@ -100,9 +100,10 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "${{ matrix.ruby }}"
-      # newest releases within each Gemfile's constraints, not the lockfile's
+      # newest Rails release each Gemfile allows, not the lockfile's; the test
+      # tooling stays locked, its majors break the spec setup
       - name: Bundle
-        run: bundle update
+        run: bundle update --conservative rails
 
       - name: Run Tests
         env:
