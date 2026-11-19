@@ -34,7 +34,7 @@ end
 
 This will create a history table called "people_h" which will maintain a history of all changes to any records in people with the use of triggers on any create/update/delete operation.
 
-On PostgreSQL an update that changes nothing but `updated_at`, `updated_by` and `lock_version`, such as a `touch`, writes no new version (see `skip_touch_versions` below). Versions are stamped in UTC whatever time zone the database session runs in, so the gem requires `ActiveRecord.default_timezone = :utc` (the Rails default).
+On PostgreSQL an update that changes nothing but `updated_at`, `updated_by`, `lock_version` and other touch columns, such as a `touch`, writes no new version (see `skip_touch_versions` and `touch_columns` below). Versions are stamped in UTC whatever time zone the database session runs in, so the gem requires `ActiveRecord.default_timezone = :utc` (the Rails default).
 
 Any subsequent schema changes to people will be reflected automatically in people_h. A generated column (`t.virtual`) gets a plain column in people_h that keeps the value each version had; on PostgreSQL the triggers read it back from the row.
 
@@ -177,7 +177,12 @@ Write no version for an update that changes nothing but `updated_at`, `updated_b
 TemporalTables.skip_touch_versions = false
 ```
 
-Coalesce the versions of quick successive edits of one column, such as a text saved on every keystroke, into one version per editing phase (PostgreSQL only, default = off). An update that changes one listed column alone names it in its version's `eff_edited_column`; in a `jsonb` column it must change one leaf alone, named by its path such as `translations.de.title` (the walk descends where both values are objects, so arrays, scalars and missing values are leaves; a dot in a key reads `\.`). `updated_at`, `updated_by`, `lock_version` and generated columns do not count, so a cache derived from a column is best a generated one. Such an update overwrites the open version instead of closing it when that version
+Besides `updated_at`, `updated_by` and `lock_version`, count further columns as touch columns, such as a render cache or a last-activity stamp written along with an edit (PostgreSQL only, default = none). Generated columns count as such, too. An update changing nothing but touch columns writes no version unless `skip_touch_versions` is off, so the open version keeps their old values, unless it began in the same transaction; coalescing never counts them as a change. A bare name applies to every table that has the column, `table.column` to that table; an entry a table lacks is skipped. It takes effect once `create_temporal_triggers` runs for a table again. An `update_column` of a touch column leaves the row's `updated_by` null while its version names the editor.
+``` ruby
+TemporalTables.touch_columns = %w[tasks.last_activity_at tasks.description_rendered]
+```
+
+Coalesce the versions of quick successive edits of one column, such as a text saved on every keystroke, into one version per editing phase (PostgreSQL only, default = off). An update that changes one listed column alone names it in its version's `eff_edited_column`; in a `jsonb` column it must change one leaf alone, named by its path such as `translations.de.title` (the walk descends where both values are objects, so arrays, scalars and missing values are leaves; a dot in a key reads `\.`). Touch columns do not count; an overwritten version takes their new values too. Such an update overwrites the open version instead of closing it when that version
 - names the same column or path, so the version of an insert, of another column or path or of several at once stays,
 - began within `coalesce_versions_within` of now, so the window slides with each edit,
 - has the same `updated_by`, where the table has that column; a null one counts as one writer.

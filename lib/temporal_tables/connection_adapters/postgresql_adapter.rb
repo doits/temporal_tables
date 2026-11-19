@@ -33,19 +33,28 @@ module TemporalTables
             "new.#{quote_column_name(name)}"
           end
         end.join(', ')
-        touch_columns = column_names & TOUCH_COLUMNS
+        # Touch columns, and generated ones that follow other columns, make no
+        # change alone, and coalescing does not count them.
+        ignored = (column_names & TOUCH_COLUMNS) |
+                  configured_columns(TemporalTables.touch_columns, table_name, column_names) |
+                  all_columns.select { |c| c.try(:virtual?) }.map(&:name)
+        ignored -= [primary_key.to_s]
         # *= compares binary images: it needs no equality operator (json, point
         # and xml have none) and tells 1.0 from 1.00. A column's type changes
         # through change_column, which creates the triggers anew.
         skip_touch = <<~SQL if TemporalTables.skip_touch_versions
           new_row := new;
           old_row := old;
-          #{copy_columns(touch_columns)}
+          #{copy_columns(ignored)}
           if new_row *= old_row then
+            -- a version begun in this transaction still takes the new values
+            update #{history} set (#{column_list(column_names)}) = row(#{new_values})
+            where #{key} = new.#{key}
+              and eff_to = '#{TemporalTables::END_OF_TIME}' and eff_from = now() at time zone 'utc';
             return null;
           end if;
         SQL
-        coalescing = coalesce_versions_sql(table_name, column_names, all_columns, key, new_values)
+        coalescing = coalesce_versions_sql(table_name, column_names, ignored, key, new_values)
         # a version begun in this transaction keeps its mark only for the same change
         same_mark = <<~SQL.squish if coalescing
           , eff_edited_column = case when eff_edited_column = edited_column then edited_column end,
@@ -142,7 +151,7 @@ module TemporalTables
       # goes into the open version instead when that carries the same mark, has
       # the same writer and began within the window: the version moves to the
       # update and the one before it ends there.
-      def coalesce_versions_sql(table_name, column_names, all_columns, key, new_values) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+      def coalesce_versions_sql(table_name, column_names, ignored, key, new_values) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         window = TemporalTables.coalesce_versions_within
         return unless window
 
@@ -151,17 +160,10 @@ module TemporalTables
         # history tables from before these columns coalesce nothing
         return unless (columns(temporal_name(table_name)).map(&:name) & %w[eff_edited_column eff_edited_from]).size == 2
 
-        generated = all_columns.select { |c| c.try(:virtual?) }.map(&:name)
-        ignored = (column_names & TOUCH_COLUMNS) | generated
-        # Every table's triggers are created anew in old migrations too, against
-        # the schema of their time, so an entry that does not match is skipped.
-        coalesced = Array(TemporalTables.coalesce_columns).filter_map do |entry|
-          table_of_entry, _, column = entry.to_s.rpartition('.')
-          column if ['', table_name.to_s].include?(table_of_entry) && column_names.include?(column)
-        end.uniq - ignored
+        coalesced = configured_columns(TemporalTables.coalesce_columns, table_name, column_names) - ignored
         return if coalesced.empty?
 
-        jsonb = all_columns.select { |c| c.sql_type == 'jsonb' && !c.array }.map(&:name)
+        jsonb = columns(table_name).select { |c| c.sql_type == 'jsonb' && !c.array }.map(&:name)
         history = quote_table_name(temporal_name(table_name))
         open_version = "#{key} = new.#{key} and eff_to = '#{TemporalTables::END_OF_TIME}'"
 
@@ -276,6 +278,15 @@ module TemporalTables
             edited_column := #{quote(column)} || changed_paths[1];
           end if;
         SQL
+      end
+
+      # Every table's triggers are created anew in old migrations too, against
+      # the schema of their time, so an entry that does not match is skipped.
+      def configured_columns(setting, table_name, column_names)
+        Array(setting).filter_map do |entry|
+          table_of_entry, _, column = entry.to_s.rpartition('.')
+          column if ['', table_name.to_s].include?(table_of_entry) && column_names.include?(column)
+        end.uniq
       end
 
       # A copied value, unlike null, satisfies a not-null domain.

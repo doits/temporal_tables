@@ -92,6 +92,7 @@ describe 'PostgreSQL triggers' do # rubocop:disable RSpec/DescribeClass
     ensure
       TemporalTables.coalesce_versions_within = nil
       TemporalTables.coalesce_columns = []
+      TemporalTables.touch_columns = []
       TemporalTables.skip_touch_versions = true
       connection.create_temporal_triggers :familiars, 'id'
       connection.create_temporal_triggers :covens, 'id'
@@ -269,6 +270,55 @@ describe 'PostgreSQL triggers' do # rubocop:disable RSpec/DescribeClass
         end
 
         expect(versions(:eff_edited_column).flatten).to eq([nil, 'traits.a', 'traits.a.b', 'traits.a\.b'])
+      end
+    end
+
+    context 'with a column among the touch_columns' do
+      before { TemporalTables.touch_columns = %w[name_cache] }
+
+      it 'writes no version when only it changes' do
+        with_column(:name_cache, :string) do |cat|
+          cat.update!(name: 'Greebo the Second')
+
+          expect { cat.update_columns(name_cache: 'greebo the second') }.not_to(change { versions(:name, :name_cache) })
+        end
+      end
+
+      it 'writes no version when only it and a column generated from it change' do
+        with_column(:name_cache, :string) do
+          with_column(:cache_length, :virtual, type: :integer, as: 'length(name_cache)', stored: true) do |cat|
+            expect { cat.update_columns(name_cache: 'greebo') }.not_to(change { versions(:name, :cache_length) })
+          end
+        end
+      end
+
+      it 'goes into the version begun in the same transaction' do
+        with_column(:name_cache, :string) do |cat|
+          ActiveRecord::Base.transaction do
+            cat.update!(name: 'Greebo the Second')
+            cat.update_columns(name_cache: 'greebo the second')
+          end
+
+          expect(versions(:name, :name_cache)).to eq([['Greebo', nil], ['Greebo the Second', 'greebo the second']])
+        end
+      end
+
+      it 'coalesces an edit that changes it along' do
+        with_column(:name_cache, :string) do |cat|
+          cat.update!(name: 'G', name_cache: 'g')
+          cat.update!(name: 'Gr', name_cache: 'gr')
+
+          expect(versions(:name, :name_cache)).to eq([['Greebo', nil], %w[Gr gr]])
+        end
+      end
+
+      it 'keeps the version of an edit that changes another column along' do
+        with_column(:name_cache, :string) do |cat|
+          cat.update!(name: 'G', name_cache: 'g')
+          cat.update!(name: 'Gr', name_cache: 'gr', status: 'published')
+
+          expect(versions(:name, :name_cache)).to eq([['Greebo', nil], %w[G g], %w[Gr gr]])
+        end
       end
     end
 

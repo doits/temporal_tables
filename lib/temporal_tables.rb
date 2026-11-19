@@ -66,6 +66,15 @@ module TemporalTables
     @skip_touch_versions = skip
   end
 
+  @touch_columns = []
+  def self.touch_columns
+    @touch_columns
+  end
+
+  def self.touch_columns=(columns)
+    @touch_columns = columns
+  end
+
   @coalesce_versions_within = nil
   def self.coalesce_versions_within
     @coalesce_versions_within
