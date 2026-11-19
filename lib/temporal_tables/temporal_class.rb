@@ -8,7 +8,6 @@ module TemporalTables
         base.extend ClassMethods
 
         self.table_name += '_h'
-        self.primary_key = 'history_id'
 
         cattr_accessor :visited_associations
         @visited_associations = []
@@ -39,15 +38,15 @@ module TemporalTables
             clazz = association.klass.history
 
             # Recreate the association, updating it to point at the
-            # history class.  The keys are explicitly set since they're
-            # inferred from the class_name and its primary key, history_id,
-            # but shouldn't be in this case.
-            options = association.options.merge(class_name: clazz.name, foreign_key: association.foreign_key)
-            unless association.through_reflection?
-              options[:primary_key] =
-                association.belongs_to? ? association.association_primary_key : association.active_record_primary_key
-            end
-            send(association.macro, association.name, **options)
+            # history class.  The foreign key is explicitly set since it's
+            # inferred from the class_name, but shouldn't be in this case.
+            send(
+              association.macro, association.name,
+              **association.options.merge(
+                class_name: clazz.name,
+                foreign_key: association.foreign_key
+              )
+            )
           end
         end
       end

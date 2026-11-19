@@ -88,7 +88,7 @@ Person         #=> Person(id: :integer, name: :string)
 Person.history #=> PersonHistory(history_id: :integer, id: :integer, name: :string, eff_from: :datetime, eff_to: :datetime)
 ```
 
-Each version is a record of its own, keyed by `history_id`: `id`, `find` and a history relation used as a subquery (`where(id: Person.history...)`) go by it. The original record's id is `orig_id` (or `select(:id)` in a subquery). History tables created before history_id existed lack the column; add it with `add_column :people_h, :history_id, :primary_key`.
+The history table's primary key is `history_id`, but a history record stands for the original one: `id`, `find`, `ids` and a history relation used as a subquery (`Person.where(id: Person.history.at(time).where(...))`) go by the original id. A single version is `where(history_id: ...)`; `reload`, `update` and `destroy` on a history record reach every version of it. History tables created before history_id existed lack the column; add it with `add_column :people_h, :history_id, :primary_key`.
 
 You can easily get a history of all changes to a record.
 ``` ruby

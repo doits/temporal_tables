@@ -62,16 +62,33 @@ describe Person do
       end
     end
 
-    describe 'a version' do
-      let(:emily_version) { emily.history.first }
+    # The history table is keyed by history_id, but a version and a history
+    # relation stand for the original record: apps filter by them in subqueries.
+    describe 'a history relation' do
+      let!(:sabrina) { Person.create name: 'Sabrina' }
+      let(:grunthildas) { Person.history.at(Time.current).where(name: 'Grunthilda') }
 
-      it 'is a record of its own, keyed by history_id' do
+      it 'is keyed by the original id' do
         expect(ActiveRecord::Base.connection.primary_key(:people_h)).to eq('history_id')
-        expect(Person.history.find(emily_version.history_id).name).to eq('Emily')
-        expect(emily_version.reload.name).to eq('Emily')
+        expect(emily.history.map(&:history_id).uniq.size).to eq(2)
 
-        emily_version.destroy!
-        expect(emily.history.map(&:name)).to eq(['Grunthilda'])
+        expect(grunthildas.ids).to eq([emily.id])
+        expect(grunthildas.first.id).to eq(emily.id)
+        expect(Person.history.at(Time.current).find(emily.id).name).to eq('Grunthilda')
+      end
+
+      it 'selects original ids as a subquery' do
+        expect(Person.where(id: grunthildas)).to eq([emily])
+        expect(Person.where.not(id: grunthildas)).to eq([sabrina])
+        expect(Person.history.at(Time.current).where.not(id: grunthildas).map(&:name)).to eq(['Sabrina'])
+      end
+
+      it 'selects original ids as a subquery on an association' do
+        hairy_warts = Wart.history.at(Time.current).where(hairiness: 3)
+
+        expect(Person.history.at(Time.current).joins(:warts).where(warts_h: { id: hairy_warts }).map(&:name))
+          .to eq(['Grunthilda'])
+        expect(Wart.history.at(Time.current).where(person_id: grunthildas).map(&:id)).to eq([wart.id])
       end
     end
 
