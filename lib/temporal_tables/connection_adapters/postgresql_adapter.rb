@@ -24,7 +24,7 @@ module TemporalTables
             declare
               cur_time timestamp without time zone;
             begin
-              cur_time := localtimestamp;
+              cur_time := now() at time zone 'utc';
 
               insert into #{temporal_name(table_name)} (#{column_list(column_names)}, eff_from)
               values (#{column_names.collect { |c| "new.#{c}" }.join(', ')}, cur_time);
@@ -43,7 +43,7 @@ module TemporalTables
             declare
               cur_time timestamp without time zone;
             begin
-              cur_time := localtimestamp;
+              cur_time := now() at time zone 'utc';
 
               update #{temporal_name(table_name)} set eff_to = cur_time
               where #{primary_key} = new.#{primary_key}
@@ -66,7 +66,7 @@ module TemporalTables
             declare
               cur_time timestamp without time zone;
             begin
-              cur_time := localtimestamp;
+              cur_time := now() at time zone 'utc';
 
               update #{temporal_name(table_name)} set eff_to = cur_time
               where #{primary_key} = old.#{primary_key}
