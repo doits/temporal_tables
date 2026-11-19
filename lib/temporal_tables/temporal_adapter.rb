@@ -96,7 +96,7 @@ module TemporalTables
 
       return unless table_exists?(temporal_name(table_name))
 
-      super temporal_name(table_name), column_name, type, **options
+      super temporal_name(table_name), column_name, type, **options.except(:null, :default)
       create_temporal_triggers table_name, original_primary_key(table_name)
     end
 
@@ -123,7 +123,7 @@ module TemporalTables
 
       return unless table_exists?(temporal_name(table_name))
 
-      super temporal_name(table_name), column_name, type, **options
+      super temporal_name(table_name), column_name, type, **options.except(:null, :default)
       # Don't need to update triggers here...
     end
 

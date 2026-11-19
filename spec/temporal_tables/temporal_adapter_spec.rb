@@ -54,4 +54,27 @@ describe TemporalTables::TemporalAdapter do
         .to eq(%w[Alohomora Lumos])
     end
   end
+
+  describe 'a column of the history table' do
+    def history_column(name)
+      connection.columns(:spells_h).find { |c| c.name == name.to_s }
+    end
+
+    it 'stays nullable and without default, whatever the live column says' do
+      connection.add_column :spells, :power, :integer, null: false, default: 1
+      connection.add_column :spells, :school, :string
+      connection.change_column :spells, :school, :string, null: false, default: 'charms'
+
+      expect([history_column(:power), history_column(:school)].map { |c| [c.null, c.default] })
+        .to eq([[true, nil], [true, nil]])
+    end
+
+    it 'takes the NULL a live column allows again' do
+      connection.add_column :spells, :power, :integer, null: false, default: 1
+      connection.change_column_null :spells, :power, true
+
+      connection.execute "insert into spells (name, power) values ('Nox', null)"
+      expect(connection.select_values('select power from spells_h')).to eq([nil])
+    end
+  end
 end
