@@ -62,6 +62,19 @@ describe Person do
       end
     end
 
+    describe 'a version' do
+      let(:emily_version) { emily.history.first }
+
+      it 'is a record of its own, keyed by history_id' do
+        expect(ActiveRecord::Base.connection.primary_key(:people_h)).to eq('history_id')
+        expect(Person.history.find(emily_version.history_id).name).to eq('Emily')
+        expect(emily_version.reload.name).to eq('Emily')
+
+        emily_version.destroy!
+        expect(emily.history.map(&:name)).to eq(['Grunthilda'])
+      end
+    end
+
     describe 'creating a join query' do
       it 'correctly joins even after generating sql has failed before' do
         expect { Person.history.at(100.years.ago).joins(:warts).where(x: proc {}).to_sql }.to raise_error(TypeError)

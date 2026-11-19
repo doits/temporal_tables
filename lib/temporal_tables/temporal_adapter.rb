@@ -24,7 +24,7 @@ module TemporalTables
     def add_temporal_table(table_name, **options) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
       create_table(
         temporal_name(table_name),
-        **options.merge(id: false, primary_key: 'history_id', temporal_bypass: true)
+        **options.merge(id: :bigint, primary_key: 'history_id', temporal_bypass: true)
       ) do |t|
         t.datetime :eff_from, null: false, limit: 6
         t.datetime :eff_to,   null: false, limit: 6, default: TemporalTables::END_OF_TIME
