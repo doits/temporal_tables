@@ -54,6 +54,30 @@ describe 'PostgreSQL triggers' do # rubocop:disable RSpec/DescribeClass
       expect(versions.map(&:first)).to eq(['Greebo', 'Greebo the Third', 'You'])
     end
 
+    it 'keeps the writer of the version begun in the same transaction when it names none' do
+      Current.user = 'Nanny Ogg'
+      ActiveRecord::Base.transaction do
+        familiar.update!(name: 'Greebo the Second')
+        Familiar.where(id: familiar.id).update_all(updated_at: 1.day.from_now)
+      end
+      ActiveRecord::Base.transaction do
+        familiar.reload.update!(name: 'Greebo the Third')
+        Familiar.where(id: familiar.id).update_all(status: 'published')
+      end
+
+      expect(versions).to eq([['Greebo', nil], ['Greebo the Second', 'Nanny Ogg'], ['Greebo the Third', 'Nanny Ogg']])
+    end
+
+    it 'takes the writer an update in the same transaction names' do
+      Current.user = 'Nanny Ogg'
+      ActiveRecord::Base.transaction do
+        familiar.update!(name: 'Greebo the Second')
+        Familiar.where(id: familiar.id).update_all(updated_at: 1.day.from_now, updated_by: 'Esme')
+      end
+
+      expect(versions).to eq([['Greebo', nil], ['Greebo the Second', 'Esme']])
+    end
+
     it 'writes a version when it changes anything else' do
       familiar.touch
       Current.user = 'Nanny Ogg'
@@ -177,6 +201,16 @@ describe 'PostgreSQL triggers' do # rubocop:disable RSpec/DescribeClass
       )
     end
 
+    it 'keeps the version of a writer when an update names none' do
+      Current.user = 'Nanny Ogg'
+      familiar.update!(name: 'Greebo the Second')
+      familiar.update_columns(name: 'Greebo the Third')
+
+      expect(versions(:name, :updated_by)).to eq(
+        [['Greebo', nil], ['Greebo the Second', 'Nanny Ogg'], ['Greebo the Third', nil]]
+      )
+    end
+
     it 'keeps a version older than the window' do
       familiar.update!(name: 'Greebo the Second')
       age_versions(6.minutes)
@@ -292,14 +326,17 @@ describe 'PostgreSQL triggers' do # rubocop:disable RSpec/DescribeClass
         end
       end
 
-      it 'goes into the version begun in the same transaction' do
+      it 'goes into the version begun in the same transaction, keeping its writer' do
         with_column(:name_cache, :string) do |cat|
+          Current.user = 'Nanny Ogg'
           ActiveRecord::Base.transaction do
             cat.update!(name: 'Greebo the Second')
             cat.update_columns(name_cache: 'greebo the second')
           end
 
-          expect(versions(:name, :name_cache)).to eq([['Greebo', nil], ['Greebo the Second', 'greebo the second']])
+          expect(versions(:name, :name_cache, :updated_by)).to eq(
+            [['Greebo', nil, nil], ['Greebo the Second', 'greebo the second', 'Nanny Ogg']]
+          )
         end
       end
 

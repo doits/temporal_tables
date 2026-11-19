@@ -24,7 +24,7 @@ module TemporalTables
         # computes its own value and is left out.
         generated_in_history = columns(temporal_name(table_name)).select { |c| c.try(:virtual?) }.map(&:name)
         column_names = all_columns.map(&:name).sort - generated_in_history
-        new_values = column_names.map do |name|
+        values = column_names.map do |name|
           # new carries no value of a virtual (not stored) column, the row in the
           # table does; Rails cannot tell the two kinds apart reliably
           if all_columns.find { |c| c.name == name }.try(:virtual?)
@@ -32,6 +32,11 @@ module TemporalTables
           else
             "new.#{quote_column_name(name)}"
           end
+        end
+        new_values = values.join(', ')
+        # an update naming no writer keeps the writer of a version begun in its transaction
+        transaction_values = column_names.zip(values).map do |name, value|
+          name == 'updated_by' ? "coalesce(#{value}, #{quote_column_name(name)})" : value
         end.join(', ')
         # Touch columns, and generated ones that follow other columns, make no
         # change alone, and coalescing does not count them.
@@ -47,8 +52,8 @@ module TemporalTables
           old_row := old;
           #{copy_columns(ignored)}
           if new_row *= old_row then
-            -- a version begun in this transaction still takes the new values
-            update #{history} set (#{column_list(column_names)}) = row(#{new_values})
+            -- a version begun in this transaction still takes the new values, a null writer aside
+            update #{history} set (#{column_list(column_names)}) = row(#{transaction_values})
             where #{key} = new.#{key}
               and eff_to = '#{TemporalTables::END_OF_TIME}' and eff_from = now() at time zone 'utc';
             return null;
@@ -95,7 +100,7 @@ module TemporalTables
               #{coalescing&.fetch(:detect)}
 
               -- a version begun in this transaction would last no time, so it takes the update
-              update #{history} set (#{column_list(column_names)}) = row(#{new_values})
+              update #{history} set (#{column_list(column_names)}) = row(#{transaction_values})
                 #{same_mark}
               where #{key} = new.#{key}
                 and eff_to = '#{TemporalTables::END_OF_TIME}' and eff_from = cur_time;
