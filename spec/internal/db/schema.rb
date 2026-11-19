@@ -102,4 +102,15 @@ ActiveRecord::Schema.define do
     t.column :hamster_uuid, (postgres ? :uuid : :bigint), null: false
     t.foreign_key :hamsters, column: :hamster_uuid, primary_key: :uuid
   end
+
+  if postgres
+    create_table :potions, temporal: true, force: true do |t|
+      t.decimal :strength
+      t.string :label
+      t.json :recipe
+      t.point :origin
+      t.xml :effects
+      t.datetime :updated_at
+    end
+  end
 end

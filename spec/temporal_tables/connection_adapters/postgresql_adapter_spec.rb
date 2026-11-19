@@ -68,4 +68,58 @@ describe 'PostgreSQL triggers' do # rubocop:disable RSpec/DescribeClass
     end
   end
   # rubocop:enable Rails/SkipsModelValidations
+
+  describe 'an update of columns whose equality is missing or loose' do
+    before do
+      connection.execute <<~SQL
+        insert into potions (strength, label, recipe, origin, effects, updated_at)
+        values (1.0, null, '{"newt": 1}', point(1, 2), '<effect>flight</effect>', now())
+      SQL
+    end
+
+    def versions
+      connection.select_value('select count(*) from potions_h')
+    end
+
+    it 'writes no version when it changes only updated_at' do
+      expect do
+        connection.execute <<~SQL
+          update potions set updated_at = now() + interval '1 day',
+            strength = strength, label = label, recipe = recipe, origin = origin, effects = effects
+        SQL
+      end.not_to(change { versions })
+    end
+
+    {
+      'a numeric to another scale' => 'strength = 1.00',
+      'a null to a value' => "label = 'Sleep'",
+      'a value to null' => 'origin = null',
+      'json to another spelling' => %(recipe = '{"newt":1}'),
+      'a point' => 'origin = point(1, 3)',
+      'xml' => "effects = '<effect>sleep</effect>'"
+    }.each do |what, set|
+      it "writes a version when it changes #{what}" do
+        expect { connection.execute "update potions set #{set}" }.to change { versions }.by(1)
+      end
+    end
+  end
+
+  describe 'an update after columns changed their type' do
+    it 'tells a touch from a change with the triggers created before' do
+      connection.create_table(:cauldrons, temporal: true) do |t|
+        t.integer :size
+        t.integer :lock_version, null: false, default: 0
+      end
+      connection.execute 'insert into cauldrons (size) values (1)'
+      connection.execute 'update cauldrons set size = 2'
+      connection.change_column :cauldrons, :size, :bigint
+      connection.change_column :cauldrons, :lock_version, :bigint
+      connection.execute 'update cauldrons set lock_version = lock_version + 1'
+      connection.execute 'update cauldrons set size = 3'
+
+      expect(connection.select_values('select size from cauldrons_h order by history_id')).to eq([1, 2, 3])
+    ensure
+      connection.drop_table :cauldrons
+    end
+  end
 end

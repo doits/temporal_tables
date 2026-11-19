@@ -19,9 +19,15 @@ module TemporalTables
       def create_temporal_triggers(table_name, primary_key) # rubocop:disable Metrics/MethodLength, Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         column_names = columns(table_name).reject { |col| col.try(:virtual?) }.map(&:name).sort
         # a touch bumps lock_version too, any other update changes something else
-        touch_columns = "'{updated_at,updated_by,lock_version}'::text[]"
+        touch_columns = column_names & %w[updated_at updated_by lock_version]
+        # *= compares binary images: it needs no equality operator (json, point
+        # and xml have none) and tells 1.0 from 1.00. Whole rows, unlike single
+        # fields, keep the cached plan valid when a column changes its type.
         skip_touch = <<~SQL if TemporalTables.skip_touch_versions
-          if to_jsonb(new) - #{touch_columns} = to_jsonb(old) - #{touch_columns} then
+          new_row := new;
+          old_row := old;
+          #{touch_columns.map { |c| "new_row.#{c} := null; old_row.#{c} := null;" }.join("\n")}
+          if new_row *= old_row then
             return null;
           end if;
         SQL
@@ -49,6 +55,8 @@ module TemporalTables
           create or replace function #{table_name}_au() returns trigger as $#{table_name}_au$
             declare
               cur_time timestamp without time zone;
+              new_row record;
+              old_row record;
             begin
               #{skip_touch}
               cur_time := now() at time zone 'utc';
