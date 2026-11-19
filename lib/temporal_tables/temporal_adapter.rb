@@ -33,7 +33,7 @@ module TemporalTables
         t.datetime :eff_edited_from, limit: 6
 
         columns(table_name).each do |c|
-          column_options = { limit: c.limit, array: c.try(:array) }.compact
+          column_options = { limit: c.limit, precision: c.precision, scale: c.scale, array: c.try(:array) }.compact
           column_type = c.type
           if column_type == :enum
             enum_type = c.sql_type_metadata.sql_type

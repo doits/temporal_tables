@@ -124,5 +124,13 @@ describe TemporalTables::TemporalAdapter do
       connection.execute "insert into spells (name, power) values ('Nox', null)"
       expect(connection.select_values('select power from spells_h')).to eq([nil])
     end
+
+    it 'keeps the precision and scale of a table that exists already' do
+      connection.create_table(:incantations) { |t| t.decimal :power, precision: 4, scale: 2 }
+      connection.add_temporal_table :incantations
+
+      power = connection.columns(:incantations_h).find { |c| c.name == 'power' }
+      expect([power.precision, power.scale]).to eq([4, 2])
+    end
   end
 end
